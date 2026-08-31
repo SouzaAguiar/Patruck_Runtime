@@ -1,0 +1,295 @@
+# SPDX-FileCopyrightText: 2020 Melissa LeBlanc-Williams for Adafruit Industries
+#
+# SPDX-License-Identifier: MIT
+
+import os
+import subprocess
+
+try:
+    from adafruit_shell import Shell
+    from clint.textui import colored
+except ImportError:
+    raise RuntimeError("The library 'adafruit_shell' was not found. To install, try typing: sudo pip3 install adafruit-python-shell")
+
+shell = Shell()
+
+BLACKLIST = "/etc/modprobe.d/raspi-blacklist.conf"
+PRODUCT_NAME = "I2S Amplifier"
+OVERLAY = "googlevoicehat-soundcard"
+CARD_NAME_FALLBACK = "sndrpigooglevoi"
+I2SAMP_INIT_SERVICE = "adafruit-i2samp-init.service"
+APLAY_SERVICE = "aplay.service"
+
+def get_card_name(overlay):
+    """Load overlay at runtime and discover the ALSA card id from aplay -l."""
+    active = subprocess.run(["dtoverlay", "-l"], capture_output=True, text=True)
+    if overlay not in active.stdout:
+        subprocess.run(["dtoverlay", overlay], check=False)
+    try:
+        output = subprocess.check_output(["aplay", "-l"], stderr=subprocess.DEVNULL).decode()
+        for line in output.splitlines():
+            if "googlevoice" in line.lower():
+                return line.split(":")[1].strip().split(" ")[0]
+    except Exception:
+        pass
+    return CARD_NAME_FALLBACK
+
+def driver_loaded(driver_name):
+    return shell.run_command(f"lsmod | grep -q '{driver_name}'", suppress_message=True)
+
+def uninstall():
+    """Reverse everything the installer does, leaving the system as it was."""
+    print(f"\nThis will remove {PRODUCT_NAME} support and restore the\n"
+        "built-in audio configuration.\n")
+    if not shell.prompt("Uninstall the I2S Amplifier driver?", default="n"):
+        print("\nAborting...")
+        shell.exit()
+
+    reboot = False
+    config = shell.get_boot_config()
+    if config is None:
+        shell.bail("No Device Tree Detected, not supported")
+
+    print("\nStopping and removing systemd units...")
+    shell.run_command(f"sudo systemctl stop {APLAY_SERVICE}", suppress_message=True)
+    shell.run_command(f"sudo systemctl disable {APLAY_SERVICE}", suppress_message=True)
+    shell.run_command(f"sudo systemctl stop {I2SAMP_INIT_SERVICE}", suppress_message=True)
+    shell.run_command(f"sudo systemctl disable {I2SAMP_INIT_SERVICE}", suppress_message=True)
+    shell.remove(f"/etc/systemd/system/{APLAY_SERVICE}")
+    shell.remove(f"/etc/systemd/system/{I2SAMP_INIT_SERVICE}")
+    shell.run_command("sudo systemctl daemon-reload")
+
+    print(f"Removing Device Tree overlay from {config}")
+    if shell.pattern_search(config, f"^dtoverlay={OVERLAY}$"):
+        shell.pattern_replace(config, f"^dtoverlay={OVERLAY}$")
+        reboot = True
+
+    print(f"Re-enabling built-in audio in {config}")
+    if shell.pattern_search(config, "^#dtparam=audio=on"):
+        shell.pattern_replace(config, "^#dtparam=audio=on", "dtparam=audio=on")
+        reboot = True
+
+    if os.path.exists(BLACKLIST):
+        print(f"Restoring Blacklist entries in {BLACKLIST}")
+        # Only un-comment the exact forms the installer normalizes to, so we
+        # never touch lines the user commented out themselves before install.
+        shell.pattern_replace(BLACKLIST, "^#blacklist snd_soc_max98357a_i2c$", "blacklist snd_soc_max98357a_i2c")
+        shell.pattern_replace(BLACKLIST, "^#blacklist snd_soc_max98357a$", "blacklist snd_soc_max98357a")
+
+    print("Restoring sound configuration")
+    if os.path.exists("/etc/asound.conf.old"):
+        # We created /etc/asound.conf, so it's ours to remove. Restore the
+        # original that the installer set aside as .old.
+        shell.remove("/etc/asound.conf")
+        shell.move("/etc/asound.conf.old", "/etc/asound.conf")
+    elif os.path.exists("/etc/asound.conf"):
+        # No saved original means the installer created asound.conf from
+        # scratch; remove it so ALSA falls back to its defaults.
+        shell.remove("/etc/asound.conf")
+
+    print("\n" + colored.green("All done!"))
+    print(f"\n{PRODUCT_NAME} support has been removed.")
+    if reboot:
+        shell.prompt_reboot()
+    shell.exit()
+
+def install():
+    reboot = False
+    print("\nThis script will install everything needed to use\n"
+        f"{PRODUCT_NAME}.\n")
+    print(colored.red("--- Warning ---"))
+    print("\nAlways be careful when running scripts and commands\n"
+        "copied from the internet. Ensure they are from a\n"
+        "trusted source.\n")
+    if not shell.prompt("Do you wish to continue?"):
+        print("\nAborting...")
+        shell.exit()
+
+    print("\nChecking hardware requirements...")
+
+    # Enable I2S overlay
+    config = shell.get_boot_config()
+    if config is None:
+        shell.bail("No Device Tree Detected, not supported")
+
+    print(f"\nAdding Device Tree Entry to {config}")
+
+    if shell.pattern_search(config, f"^dtoverlay={OVERLAY}$"):
+        print("dtoverlay already active")
+    else:
+        shell.write_text_file(config, f"dtoverlay={OVERLAY}")
+        reboot = True
+
+    print(f"\nLoading overlay and detecting ALSA card name...")
+    card_name = get_card_name(OVERLAY)
+    print(f"Card name: {card_name}")
+
+    print(f"\nDisabling built-in audio in {config}")
+    shell.pattern_replace(config, "^dtparam=audio=on", "#dtparam=audio=on")
+
+    if os.path.exists(BLACKLIST):
+        print("\nCommenting out Blacklist entry in", BLACKLIST)
+        shell.pattern_replace(BLACKLIST, "^blacklist[[:space:]]*snd_soc_max98357a.*", "#blacklist snd_soc_max98357a")
+        shell.pattern_replace(BLACKLIST, "^blacklist[[:space:]]*snd_soc_max98357a_i2c.*", "#blacklist snd_soc_max98357a_i2c")
+        shell.pattern_replace(BLACKLIST, "^blacklist[[:space:]]*snd_soc_max98357a.*", "#blacklist snd_soc_max98357a")
+
+    print("Configuring sound output")
+    if os.path.exists("/etc/asound.conf"):
+        if os.path.exists("/etc/asound.conf.old"):
+            shell.remove("/etc/asound.conf.old")
+        shell.move("/etc/asound.conf", "/etc/asound.conf.old")
+    shell.write_text_file("~/asound.conf",
+"""
+pcm.speakerbonnet {
+   type hw card 0
+}
+
+pcm.dmixer {
+   type dmix
+   ipc_key 1024
+   ipc_perm 0666
+   slave {
+     pcm "speakerbonnet"
+     period_time 0
+     period_size 1024
+     buffer_size 8192
+     rate 44100
+     channels 2
+   }
+}
+
+ctl.dmixer {
+    type hw card 0
+}
+
+pcm.softvol {
+    type softvol
+    slave.pcm "dmixer"
+    control.name "PCM"
+    control.card 0
+}
+
+ctl.softvol {
+    type hw card 0
+}
+
+pcm.!default {
+    type             plug
+    slave.pcm       "softvol"
+}
+""".replace("card 0", f'card "{card_name}"'))
+    shell.move("~/asound.conf", "/etc/asound.conf")
+
+    # Prime the softvol PCM control and persist it.
+    #
+    # The asound.conf above declares a softvol control named "PCM" on
+    # card <card_name>, but ALSA only materializes a softvol control once
+    # a stream has actually flowed through the softvol PCM device. On a
+    # brand-new install, the control therefore doesn't exist yet and
+    # `amixer -c <card> set PCM ...` fails with "Unable to find simple
+    # control 'PCM',0" (or, on older alsa-utils, "amixer: Invalid
+    # command!"). See adafruit/Raspberry-Pi-Installer-Scripts#370.
+    #
+    # Touching the softvol device once via amixer registers the control,
+    # and `alsactl store` writes it to /var/lib/alsa/asound.state so the
+    # systemd alsa-restore service re-creates it on every boot.
+    print("Priming softvol PCM control...")
+    shell.run_command(f"amixer -D 'plug:softvol' sset PCM 100% > /dev/null 2>&1")
+    shell.run_command("sudo alsactl store")
+
+    print("Installing I2S amplifier initialization systemd unit")
+    shell.write_text_file(f"/etc/systemd/system/{I2SAMP_INIT_SERVICE}", f"""
+[Unit]
+Description=Initialize Adafruit I2S amplifier softvol control.
+After=local-fs.target sound.target
+Wants=sound.target
+Before={APLAY_SERVICE}
+StartLimitBurst=5
+StartLimitIntervalSec=60
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Restart=on-failure
+RestartSec=5s
+
+ExecStartPre=/bin/sh -c 'i=0; while [ "$i" -lt 30 ]; do \\
+    /usr/bin/aplay -l | /bin/grep -qi "{card_name}" && exit 0; \\
+    i=$((i+1)); /bin/sleep 1; \\
+    done; exit 1'
+ExecStart=/bin/sh -c '/usr/bin/amixer -c "{card_name}" controls | \\
+    /bin/grep -qi "name=.*PCM" || \\
+    /usr/bin/amixer -D plug:softvol sset PCM 100%'
+ExecStart=-/usr/sbin/alsactl restore
+
+[Install]
+WantedBy=multi-user.target""", append=False)
+
+    print("Installing aplay systemd unit")
+    shell.write_text_file(f"/etc/systemd/system/{APLAY_SERVICE}", f"""
+[Unit]
+Description=Invoke aplay from /dev/zero at system start.
+Wants={I2SAMP_INIT_SERVICE}
+After={I2SAMP_INIT_SERVICE}
+StartLimitBurst=5
+StartLimitIntervalSec=60
+
+[Service]
+Restart=on-failure
+RestartSec=5s
+
+ExecStart=/usr/bin/aplay -D default -t raw -r 44100 -c 2 -f S16_LE /dev/zero
+
+[Install]
+WantedBy=multi-user.target""", append=False)
+
+    shell.run_command("sudo systemctl daemon-reload")
+    shell.run_command(f"sudo systemctl enable {I2SAMP_INIT_SERVICE}")
+    shell.run_command(f"sudo systemctl disable {APLAY_SERVICE}")
+    print("\nYou can optionally activate '/dev/zero' playback in\n"
+        "the background at boot. This will remove all\n"
+        "popping/clicking but does use some processor time.\n\n")
+    if shell.prompt("Activate '/dev/zero' playback in background? [RECOMMENDED]\n", default="y"):
+        shell.run_command(f"sudo systemctl enable {APLAY_SERVICE}")
+        reboot = True
+
+    if driver_loaded("max98357a"):
+        print(f"\nWe can now test your {PRODUCT_NAME}")
+        shell.warn("Set your speakers at a low volume if possible!")
+        if shell.prompt("Do you wish to test your system now?"):
+            print("Testing...")
+            shell.run_command("speaker-test -l5 -c2 -t wav")
+    print("\n" + colored.green("All done!"))
+    print("\nEnjoy your new $productname!")
+    print(
+        "\nTo adjust volume, use:\n"
+        f"    amixer -c {card_name} sset PCM <percent>%\n"
+        f"    e.g. amixer -c {card_name} sset PCM 80%\n"
+        "\nNote: bare `amixer sset PCM ...` (without -c) will NOT work,\n"
+        "because the softvol control lives on the I2S card, not the\n"
+        "default ctl device.\n"
+    )
+    if reboot:
+        shell.prompt_reboot()
+
+def main():
+    shell.clear()
+    if not shell.is_raspberry_pi():
+        shell.bail("Non-Raspberry Pi board detected.")
+
+    selection = shell.select_n(
+        f"What would you like to do with the {PRODUCT_NAME} driver?",
+        ["Install", "Uninstall", "Quit"],
+    )
+    if selection == 1:
+        install()
+    elif selection == 2:
+        uninstall()
+    else:
+        print("\nAborting...")
+        shell.exit()
+
+# Main function
+if __name__ == "__main__":
+    shell.require_root()
+    main()

@@ -19,7 +19,7 @@ class Imu:
         self.calibrate = calibrate
 
         i2c = busio.I2C(board.SCL, board.SDA)
-        self.imu = adafruit_bno055.BNO055_I2C(i2c)
+        self.imu = adafruit_bno055.BNO055_I2C(i2c,address=0x29)
 
         # self.imu.mode = adafruit_bno055.IMUPLUS_MODE
         # self.imu.mode = adafruit_bno055.ACCGYRO_MODE
