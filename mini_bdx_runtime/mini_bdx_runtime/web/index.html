@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <meta name="theme-color" content="#07111f">
+  <title>Open Duck Control</title>
+  <link rel="stylesheet" href="/static/control.css">
+</head>
+<body>
+  <main>
+    <header>
+      <div><span class="eyebrow">OPEN DUCK MINI</span><h1>Controle remoto</h1></div>
+      <div id="status" class="status offline"><i></i><span>Desconectado</span></div>
+    </header>
+
+    <section id="videoPanel" class="video hidden">
+      <img id="video" alt="Câmera do robô">
+      <div class="videoShade"></div>
+      <button id="fullscreen" class="iconButton" aria-label="Tela cheia">⛶</button>
+    </section>
+
+    <section class="controls">
+      <div class="joystickBlock">
+        <span>MOVIMENTO</span>
+        <div id="leftStick" class="joystick"><div class="cross"></div><div class="knob"></div></div>
+      </div>
+      <div class="centerActions">
+        <button id="pause" class="primary">INICIAR</button>
+        <button id="sprint" class="hold">SPRINT</button>
+        <div class="speed">
+          <button data-button="dpad_down">−</button><span>PASSO</span><button data-button="dpad_up">+</button>
+        </div>
+      </div>
+      <div class="joystickBlock">
+        <span>GIRO</span>
+        <div id="rightStick" class="joystick"><div class="cross"></div><div class="knob"></div></div>
+      </div>
+    </section>
+
+    <section class="extras">
+      <button data-button="B">SOM</button>
+      <button data-button="X">PROJETOR</button>
+      <button id="headMode" class="hidden">CABEÇA</button>
+      <button id="stop" class="danger">PARAR</button>
+    </section>
+    <p class="hint">Mantenha esta tela aberta enquanto o robô estiver em movimento.</p>
+  </main>
+  <script src="/static/control.js"></script>
+</body>
+</html>
