@@ -7,7 +7,6 @@ from mini_bdx_runtime.onnx_infer import OnnxInfer
 
 from mini_bdx_runtime.raw_imu import Imu
 from mini_bdx_runtime.poly_reference_motion import PolyReferenceMotion
-from mini_bdx_runtime.xbox_controller import XBoxController
 from mini_bdx_runtime.feet_contacts import FeetContacts
 from mini_bdx_runtime.eyes import Eyes
 from mini_bdx_runtime.sounds import Sounds
@@ -31,6 +30,15 @@ class RLWalk:
         pid=[30, 0, 0],
         action_scale=0.25,
         commands=False,
+        control_source="xbox",
+        web_host="0.0.0.0",
+        web_port=8080,
+        web_token=None,
+        web_command_timeout=0.6,
+        allow_head_control=False,
+        camera=False,
+        camera_size=(640, 480),
+        camera_fps=10,
         pitch_bias=0,
         save_obs=False,
         replay_obs=None,
@@ -95,8 +103,25 @@ class RLWalk:
         self.paused = self.duck_config.start_paused
 
         self.command_freq = 20  # hz
-        if self.commands:
-            self.xbox_controller = XBoxController(self.command_freq)
+        self.controller = None
+        if self.commands and control_source == "xbox":
+            from mini_bdx_runtime.xbox_controller import XBoxController
+
+            self.controller = XBoxController(self.command_freq)
+        elif self.commands and control_source == "web":
+            from mini_bdx_runtime.web_controller import WebController
+
+            self.controller = WebController(
+                self.command_freq,
+                host=web_host,
+                port=web_port,
+                token=web_token,
+                command_timeout=web_command_timeout,
+                allow_head_control=allow_head_control,
+                camera=camera,
+                camera_size=camera_size,
+                camera_fps=camera_fps,
+            )
 
         # Reference motion, but we only really need the length of one phase
         # TODO
@@ -208,8 +233,13 @@ class RLWalk:
 
                 if self.commands:
                     self.last_commands, self.buttons, left_trigger, right_trigger = (
-                        self.xbox_controller.get_last_command()
+                        self.controller.get_last_command()
                     )
+                    if hasattr(self.controller, "consume_desired_paused"):
+                        desired_paused = self.controller.consume_desired_paused()
+                        if desired_paused is not None:
+                            self.paused = desired_paused
+                            print("PAUSE" if self.paused else "UNPAUSE")
                     if self.buttons.dpad_up.triggered:
                         self.phase_frequency_factor_offset += 0.05
                         print(
@@ -362,8 +392,22 @@ if __name__ == "__main__":
         "--commands",
         action="store_true",
         default=True,
-        help="external commands, keyboard or gamepad. Launch control_server.py on host computer",
+        help="enable the selected external command source",
     )
+    parser.add_argument(
+        "--control-source", choices=("xbox", "web"), default="xbox",
+        help="command input used by the walking policy",
+    )
+    parser.add_argument("--serial-port", default="/dev/ttyACM0")
+    parser.add_argument("--web-host", default="0.0.0.0")
+    parser.add_argument("--web-port", type=int, default=8080)
+    parser.add_argument("--web-token", default=None)
+    parser.add_argument("--web-command-timeout", type=float, default=0.6)
+    parser.add_argument("--allow-head-control", action="store_true")
+    parser.add_argument("--camera", action="store_true")
+    parser.add_argument("--camera-width", type=int, default=640)
+    parser.add_argument("--camera-height", type=int, default=480)
+    parser.add_argument("--camera-fps", type=int, default=10)
     parser.add_argument(
         "--save_obs",
         type=str,
@@ -391,6 +435,16 @@ if __name__ == "__main__":
         pid=pid,
         control_freq=args.control_freq,
         commands=args.commands,
+        control_source=args.control_source,
+        serial_port=args.serial_port,
+        web_host=args.web_host,
+        web_port=args.web_port,
+        web_token=args.web_token,
+        web_command_timeout=args.web_command_timeout,
+        allow_head_control=args.allow_head_control,
+        camera=args.camera,
+        camera_size=(args.camera_width, args.camera_height),
+        camera_fps=args.camera_fps,
         pitch_bias=args.pitch_bias,
         save_obs=args.save_obs,
         replay_obs=args.replay_obs,
