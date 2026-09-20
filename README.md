@@ -163,6 +163,10 @@ python find_soft_offsets.py
 
 ## Run the walk !
 
+Optional robot telemetry: see [TELEMETRY.md](TELEMETRY.md). Add
+`--telemetry-dir ../telemetry --telemetry-label student-test` to your usual
+walking command to record sensors, policy actions, servo targets and timings.
+
 Download the [latest policy checkpoint ](https://github.com/apirrone/Open_Duck_Mini/blob/v2/BEST_WALK_ONNX_2.onnx) and copy it to your duck.
 
 `cd scripts/`

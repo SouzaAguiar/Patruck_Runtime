@@ -121,8 +121,10 @@ class Imu:
             time.sleep(0.01)
 
     def imu_worker(self):
+        sample_index = 0
         while True:
             s = time.time()
+            sample_start_ns = time.monotonic_ns()
             try:
                 gyro = np.array(self.imu.gyro).copy()
                 accelero = np.array(self.imu.acceleration).copy()
@@ -141,7 +143,11 @@ class Imu:
             data = {
                 "gyro": gyro,
                 "accelero": accelero,
+                "sample_start_monotonic_ns": sample_start_ns,
+                "sample_end_monotonic_ns": time.monotonic_ns(),
+                "sample_index": sample_index,
             }
+            sample_index += 1
 
             self.imu_queue.put(data)
             took = time.time() - s

@@ -1,5 +1,7 @@
 import time
 import pickle
+from contextlib import nullcontext
+from pathlib import Path
 
 import numpy as np
 from mini_bdx_runtime.rustypot_position_hwi import HWI
@@ -14,6 +16,7 @@ from mini_bdx_runtime.antennas import Antennas
 from mini_bdx_runtime.projector import Projector
 from mini_bdx_runtime.rl_utils import make_action_dict, LowPassActionFilter
 from mini_bdx_runtime.duck_config import DuckConfig
+from mini_bdx_runtime.telemetry import TelemetryRecorder, file_sha256
 
 import os
 
@@ -43,8 +46,11 @@ class RLWalk:
         save_obs=False,
         replay_obs=None,
         cutoff_frequency=None,
+        telemetry=None,
     ):
 
+        self.telemetry = telemetry
+        self.telemetry_observation = None
         self.duck_config = DuckConfig(config_json_path=duck_config_path)
 
         self.commands = commands
@@ -145,9 +151,26 @@ class RLWalk:
         if self.duck_config.antennas:
             self.antennas = Antennas()
 
+        if self.telemetry is not None:
+            self.telemetry.record(
+                'runtime_ready', joint_names=list(self.hwi.joints),
+                joint_ids=list(self.hwi.joints.values()), home_rad=self.init_pos,
+                offsets_rad=[self.hwi.joints_offsets[n] for n in self.hwi.joints],
+                kps=self.hwi.kps, kds=self.hwi.kds, action_scale=self.action_scale,
+                control_freq_hz=self.control_freq, start_paused=self.paused,
+                imu_upside_down=self.duck_config.imu_upside_down,
+                phase_period_steps=self.PRM.nb_steps_in_period,
+                phase_frequency_offset=self.phase_frequency_factor_offset,
+                cutoff_frequency_hz=cutoff_frequency, replay_obs=replay_obs is not None,
+                imu_calibration_sha256=file_sha256('imu_calib_data.pkl'),
+                reference_motion_sha256=file_sha256('polynomial_coefficients.pkl'),
+            )
+
     def get_obs(self):
 
+        read_start_ns = time.monotonic_ns()
         imu_data = self.imu.get_data()
+        imu_received_ns = time.monotonic_ns()
 
         dof_pos = self.hwi.get_present_positions(
             ignore=[
@@ -155,6 +178,7 @@ class RLWalk:
                 "right_antenna",
             ]
         )  # rad
+        position_end_ns = time.monotonic_ns()
 
         dof_vel = self.hwi.get_present_velocities(
             ignore=[
@@ -162,21 +186,49 @@ class RLWalk:
                 "right_antenna",
             ]
         )  # rad/s
+        velocity_end_ns = time.monotonic_ns()
 
         if dof_pos is None or dof_vel is None:
+            if self.telemetry is not None:
+                self.telemetry.record('sensor_failure', reason='missing_joint_reading',
+                                      positions_missing=dof_pos is None, velocities_missing=dof_vel is None)
             return None
 
         if len(dof_pos) != self.num_dofs:
+            if self.telemetry is not None:
+                self.telemetry.record('sensor_failure', reason='position_length', count=len(dof_pos))
             print(f"ERROR len(dof_pos) != {self.num_dofs}")
             return None
 
         if len(dof_vel) != self.num_dofs:
+            if self.telemetry is not None:
+                self.telemetry.record('sensor_failure', reason='velocity_length', count=len(dof_vel))
             print(f"ERROR len(dof_vel) != {self.num_dofs}")
             return None
 
         cmds = self.last_commands
 
         feet_contacts = self.feet_contacts.get()
+        contacts_end_ns = time.monotonic_ns()
+
+        if self.telemetry is not None:
+            sample_end = imu_data.get('sample_end_monotonic_ns')
+            self.telemetry_observation = {
+                'read_start_monotonic_ns': read_start_ns,
+                'imu_received_monotonic_ns': imu_received_ns,
+                'position_end_monotonic_ns': position_end_ns,
+                'velocity_end_monotonic_ns': velocity_end_ns,
+                'contacts_end_monotonic_ns': contacts_end_ns,
+                'imu_sample_start_monotonic_ns': imu_data.get('sample_start_monotonic_ns'),
+                'imu_sample_end_monotonic_ns': sample_end,
+                'imu_sample_index': imu_data.get('sample_index'),
+                'imu_age_ms': (imu_received_ns-sample_end)/1e6 if sample_end is not None else None,
+                'gyro_rad_s': np.array(imu_data['gyro']).copy(),
+                'accelerometer_m_s2': np.array(imu_data['accelero']).copy(),
+                'joint_position_rad': dof_pos.copy(), 'joint_velocity_rad_s': dof_vel.copy(),
+                'contacts_left_right': list(feet_contacts),
+                'previous_motor_targets_rad': self.motor_targets.copy(),
+            }
 
         obs = np.concatenate(
             [
@@ -223,6 +275,8 @@ class RLWalk:
 
     def run(self):
         i = 0
+        previous_cycle_ns = None
+        previous_paused = None
         try:
             print("Starting")
             start_t = time.time()
@@ -230,6 +284,9 @@ class RLWalk:
                 left_trigger = 0
                 right_trigger = 0
                 t = time.time()
+                cycle_start_ns = time.monotonic_ns()
+                cycle_dt_ms = (cycle_start_ns-previous_cycle_ns)/1e6 if previous_cycle_ns is not None else None
+                previous_cycle_ns = cycle_start_ns
 
                 if self.commands:
                     self.last_commands, self.buttons, left_trigger, right_trigger = (
@@ -276,13 +333,20 @@ class RLWalk:
                         else:
                             print("UNPAUSE")
 
+                if self.telemetry is not None and self.paused != previous_paused:
+                    self.telemetry.record('pause_changed', paused=self.paused)
+                previous_paused = self.paused
                 if self.paused:
+                    if self.telemetry is not None:
+                        self.telemetry.record('paused', commands=self.last_commands,
+                                              command_source=getattr(self.controller, 'last_command_telemetry', None))
                     time.sleep(0.1)
                     continue
 
                 obs = self.get_obs()
                 if obs is None:
                     continue
+                observed_obs = obs.copy()
 
                 self.imitation_i += 1 * (
                     self.phase_frequency_factor + self.phase_frequency_factor_offset
@@ -309,7 +373,9 @@ class RLWalk:
                         print("BREAKING ")
                         break
 
+                inference_start_ns = time.monotonic_ns()
                 action = self.policy.infer(obs)
+                inference_end_ns = time.monotonic_ns()
 
                 self.last_last_last_action = self.last_last_action.copy()
                 self.last_last_action = self.last_action.copy()
@@ -318,6 +384,7 @@ class RLWalk:
                 # action = np.zeros(10)
 
                 self.motor_targets = self.init_pos + action * self.action_scale
+                unfiltered_targets = self.motor_targets.copy()
 
                 # self.motor_targets = np.clip(
                 #     self.motor_targets,
@@ -344,7 +411,34 @@ class RLWalk:
                     self.motor_targets, list(self.hwi.joints.keys())
                 )
 
-                self.hwi.set_position_all(action_dict)
+                write_start_ns = time.monotonic_ns()
+                try:
+                    self.hwi.set_position_all(action_dict)
+                except Exception as exc:
+                    if self.telemetry is not None:
+                        self.telemetry.record('motor_write_failure', cycle=i, message=str(exc),
+                                              motor_targets_rad=self.motor_targets)
+                    raise
+                write_end_ns = time.monotonic_ns()
+
+                if self.telemetry is not None:
+                    self.telemetry.record(
+                        'cycle', cycle=i, cycle_start_monotonic_ns=cycle_start_ns,
+                        previous_cycle_dt_ms=cycle_dt_ms, commands=self.last_commands,
+                        command_source=getattr(self.controller, 'last_command_telemetry', None),
+                        sensors=self.telemetry_observation, observed_obs=observed_obs,
+                        policy_obs=obs, action=action, unfiltered_targets_rad=unfiltered_targets,
+                        motor_targets_rad=self.motor_targets,
+                        servo_goal_rad=[action_dict[n]+self.hwi.joints_offsets[n] for n in self.hwi.joints],
+                        inference_start_monotonic_ns=inference_start_ns,
+                        inference_end_monotonic_ns=inference_end_ns,
+                        inference_ms=(inference_end_ns-inference_start_ns)/1e6,
+                        motor_write_start_monotonic_ns=write_start_ns,
+                        motor_write_end_monotonic_ns=write_end_ns,
+                        motor_write_ms=(write_end_ns-write_start_ns)/1e6,
+                        loop_work_before_logging_ms=(write_end_ns-cycle_start_ns)/1e6,
+                        phase_frequency=self.phase_frequency_factor+self.phase_frequency_factor_offset,
+                    )
 
                 i += 1
 
@@ -358,6 +452,8 @@ class RLWalk:
                 time.sleep(max(0, 1 / self.control_freq - took))
 
         except KeyboardInterrupt:
+            if self.telemetry is not None:
+                self.telemetry.record('control_interrupted', cycle=i)
             if self.duck_config.antennas:
                 self.antennas.stop()
             if self.duck_config.eyes:
@@ -423,32 +519,53 @@ if __name__ == "__main__":
         help="replay the observations from a previous run (can be from the robot or from mujoco)",
     )
     parser.add_argument("--cutoff_frequency", type=float, default=None)
+    parser.add_argument('--telemetry-dir', help='Directory for a new, unique telemetry session')
+    parser.add_argument('--telemetry-label', default='test', help='Example: student-forward-floor-a')
 
     args = parser.parse_args()
     pid = [args.p, args.i, args.d]
 
     print("Done parsing args")
-    rl_walk = RLWalk(
-        args.onnx_model_path,
-        duck_config_path=args.duck_config_path,
-        action_scale=args.action_scale,
-        pid=pid,
-        control_freq=args.control_freq,
-        commands=args.commands,
-        control_source=args.control_source,
-        serial_port=args.serial_port,
-        web_host=args.web_host,
-        web_port=args.web_port,
-        web_token=args.web_token,
-        web_command_timeout=args.web_command_timeout,
-        allow_head_control=args.allow_head_control,
-        camera=args.camera,
-        camera_size=(args.camera_width, args.camera_height),
-        camera_fps=args.camera_fps,
-        pitch_bias=args.pitch_bias,
-        save_obs=args.save_obs,
-        replay_obs=args.replay_obs,
-        cutoff_frequency=args.cutoff_frequency,
-    )
-    print("Done instantiating RLWalk")
-    rl_walk.run()
+    recorder = nullcontext(None)
+    if args.telemetry_dir:
+        recorder = TelemetryRecorder(args.telemetry_dir, label=args.telemetry_label, metadata={
+            'model_name': Path(args.onnx_model_path).name,
+            'model_sha256': file_sha256(args.onnx_model_path),
+            'runtime_sha256': file_sha256(__file__),
+            'config_sha256': file_sha256(args.duck_config_path),
+            'control_source': args.control_source, 'control_freq_hz': args.control_freq,
+            'action_scale': args.action_scale, 'pid_requested': pid,
+            'pitch_bias_requested_deg': args.pitch_bias,
+            'cutoff_frequency_hz': args.cutoff_frequency,
+            'web_command_timeout_s': args.web_command_timeout,
+            'source_sha256': {
+                name: file_sha256(Path(__file__).resolve().parents[1]/'mini_bdx_runtime'/'mini_bdx_runtime'/name)
+                for name in ('raw_imu.py', 'web_controller.py', 'telemetry.py', 'rustypot_position_hwi.py')
+            },
+        })
+    with recorder as telemetry:
+        rl_walk = RLWalk(
+            args.onnx_model_path,
+            duck_config_path=args.duck_config_path,
+            action_scale=args.action_scale,
+            pid=pid,
+            control_freq=args.control_freq,
+            commands=args.commands,
+            control_source=args.control_source,
+            serial_port=args.serial_port,
+            web_host=args.web_host,
+            web_port=args.web_port,
+            web_token=args.web_token,
+            web_command_timeout=args.web_command_timeout,
+            allow_head_control=args.allow_head_control,
+            camera=args.camera,
+            camera_size=(args.camera_width, args.camera_height),
+            camera_fps=args.camera_fps,
+            pitch_bias=args.pitch_bias,
+            save_obs=args.save_obs,
+            replay_obs=args.replay_obs,
+            cutoff_frequency=args.cutoff_frequency,
+            telemetry=telemetry,
+        )
+        print("Done instantiating RLWalk")
+        rl_walk.run()

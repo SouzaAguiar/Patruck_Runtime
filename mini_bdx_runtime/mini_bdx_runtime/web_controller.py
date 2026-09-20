@@ -66,6 +66,7 @@ class WebCommandState:
     _last_update: float = field(default=0.0, init=False)
     _connected: bool = field(default=False, init=False)
     _desired_paused: bool | None = field(default=None, init=False)
+    last_snapshot_metadata: dict[str, Any] = field(default_factory=dict, init=False)
 
     def update(self, payload: dict[str, Any]) -> None:
         mode = payload.get("mode", "walk")
@@ -113,7 +114,15 @@ class WebCommandState:
 
     def snapshot(self) -> tuple[list[float], dict[str, bool], float, float, bool]:
         with self._lock:
-            fresh = self._connected and time.monotonic() - self._last_update <= self.timeout
+            now = time.monotonic()
+            age = now - self._last_update if self._last_update else None
+            fresh = self._connected and age is not None and age <= self.timeout
+            self.last_snapshot_metadata = {
+                'source': 'web', 'connected': self._connected, 'command_fresh': fresh,
+                'command_age_ms': age*1000 if age is not None else None,
+                'timeout_ms': self.timeout*1000,
+                'sampled_monotonic_ns': time.monotonic_ns(),
+            }
             if not fresh:
                 return [0.0] * 7, {name: False for name in self._buttons}, 0.0, 0.0, False
             return (
@@ -268,6 +277,7 @@ class WebController:
 
     def get_last_command(self):
         commands, raw_buttons, left_trigger, right_trigger, _connected = self.state.snapshot()
+        self.last_command_telemetry = self.state.last_snapshot_metadata.copy()
         self.buttons.update(
             raw_buttons["A"],
             raw_buttons["B"],
