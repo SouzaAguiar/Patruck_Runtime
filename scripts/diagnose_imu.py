@@ -113,6 +113,51 @@ def register_snapshot(sensor):
     return result
 
 
+def startup_issues(registers, mode):
+    issues = []
+    for name, expected in (('chip_id', 0xA0), ('page', 0), ('operation_mode', mode)):
+        actual = registers.get(name)
+        if actual != expected:
+            value = f'0x{actual:02X}' if isinstance(actual, int) else str(actual)
+            issues.append(f'{name}={value} (esperado 0x{expected:02X})')
+    units = registers.get('unit_selection')
+    if not isinstance(units, int) or units & 0x03:
+        issues.append(f'unit_selection={units!r} incompativel com a conversao do driver')
+    return issues
+
+
+def probe_startup(sensor, capture, recorder, mode, attempts=10, required_good=3):
+    """Retry reads only, retaining every failure. Never force page/unit changes."""
+    consecutive = 0
+    failures = 0
+    last_issues = []
+    for attempt in range(1, attempts+1):
+        capture.transactions.clear()
+        registers = register_snapshot(sensor)
+        last_issues = startup_issues(registers, mode)
+        consecutive = consecutive+1 if not last_issues else 0
+        failures += int(bool(last_issues))
+        recorder.record('imu_registers', stage='startup_probe', attempt=attempt,
+                        registers=registers, issues=last_issues,
+                        transactions=list(capture.transactions), consecutive_valid=consecutive)
+        if last_issues:
+            print(f'Conferencia IMU {attempt}/{attempts}: '+ '; '.join(last_issues), flush=True)
+        else:
+            print(f'Conferencia IMU {attempt}/{attempts}: ID=0xA0, pagina=0, '
+                  f'modo=0x{mode:02X}; valida {consecutive}/{required_good}', flush=True)
+        if consecutive >= required_good:
+            recorder.record('startup_probe_result', passed=True, attempts=attempt,
+                            invalid_snapshots=failures)
+            return registers
+        if attempt < attempts:
+            time.sleep(.1)
+    recorder.record('startup_probe_result', passed=False, attempts=attempts,
+                    invalid_snapshots=failures)
+    detail = '; '.join(last_issues) or 'leituras validas consecutivas insuficientes'
+    raise RuntimeError('IMU nao confirmou configuracao estavel: '+detail+
+                       '. Bytes e tentativas preservados na pasta da sessao.')
+
+
 def acquire(sensor, capture, recorder, duration, frequency, reread=True):
     started = time.monotonic()
     count = anomalies = overruns = 0
@@ -146,6 +191,8 @@ def summarize(folder):
     sequence_gaps = 0
     max_abs = {'gyro': 0., 'acceleration': 0.}
     registers = []
+    startup_results = []
+    errors = []
     for path in sorted(folder.glob('chunk-*.jsonl')):
         for line in path.read_text(encoding='utf-8').splitlines():
             row = json.loads(line)
@@ -153,6 +200,11 @@ def summarize(folder):
             seq_previous = row['sequence']
             if row['kind'] == 'imu_registers':
                 registers.append(row['registers'])
+            if row['kind'] == 'startup_probe_result':
+                startup_results.append({k:v for k,v in row.items() if k not in (
+                    'kind','sequence','recorded_monotonic_ns','recorded_unix_ns')})
+            if row['kind'] == 'session_error':
+                errors.append({'type': row.get('error_type'), 'message': row.get('message')})
             if row['kind'] != 'imu_sample':
                 continue
             counts['samples'] += 1
@@ -182,6 +234,7 @@ def summarize(folder):
             'observed_span_s': last-first if first is not None else 0,
             'max_abs_readings': max_abs, 'max_acquisition_ms': max_age,
             'register_snapshots': registers, 'first_abnormal_examples': examples,
+            'startup_probe_results': startup_results, 'session_errors': errors,
             'interpretation': [
                 'Raw capture is the same transaction consumed by the driver, not a later read.',
                 'A reread is a new acquisition, not proof of the original true physical value.',
@@ -269,6 +322,7 @@ def main():
     import busio
     import adafruit_bno055
     bus = None
+    exit_code = 0
     recorder = TelemetryRecorder(args.output, label=args.label, metadata={
         'diagnostic_schema': 1, 'duration_s': args.duration, 'frequency_hz': args.frequency,
         'address': args.address, 'mode': args.mode, 'imu_upside_down': config.get('imu_upside_down', False),
@@ -300,28 +354,28 @@ def main():
             time.sleep(.1)
             capture = CapturedI2CDevice(sensor.i2c_device)
             sensor.i2c_device = capture
-            initial_registers = register_snapshot(sensor)
-            recorder.record('imu_registers', stage='initial', registers=initial_registers)
-            if initial_registers['chip_id'] != 0xA0 or initial_registers['page'] != 0:
-                raise RuntimeError('Unexpected chip ID or register page; inspect recorded registers')
-            units = initial_registers['unit_selection']
-            if not isinstance(units, int) or units & 0x03:
-                raise RuntimeError('Units do not match Adafruit acceleration/gyro conversion; no interpretation attempted')
-            if initial_registers['operation_mode'] != mode:
-                raise RuntimeError('Requested sensor mode was not confirmed')
+            probe_startup(sensor, capture, recorder, mode)
             result = acquire(sensor, capture, recorder, args.duration, args.frequency, not args.no_reread)
             recorder.record('acquisition_complete', **result)
             recorder.record('imu_registers', stage='final', registers=register_snapshot(sensor))
     except KeyboardInterrupt:
         print('Coleta interrompida; blocos pendentes finalizados.')
+        exit_code = 130
+    except Exception as exc:
+        print(f'DIAGNOSTICO INTERROMPIDO: {type(exc).__name__}: {exc}', file=sys.stderr)
+        exit_code = 2
     finally:
         if bus is not None:
-            bus.deinit()
+            try:
+                bus.deinit()
+            except Exception as exc:
+                print(f'Nao foi possivel liberar o barramento: {exc}', file=sys.stderr)
+                exit_code = 2
     result = summarize(recorder.folder)
     atomic_json(recorder.folder/'summary.json', result)
     print(json.dumps(result['counts'], indent=2))
     print('Resultado:', (recorder.folder/'summary.json').resolve())
-    return 0 if result['status']['state'] == 'closed' else 2
+    return exit_code if result['status']['state'] == 'closed' else 2
 
 
 if __name__ == '__main__':

@@ -121,3 +121,33 @@ def test_nonfinite_or_missing_values_do_not_look_normal():
     result = diagnostic.inspect_vector((float('nan'),0,0), [], 0x14, diagnostic.GYRO_SCALE,20)
     assert not result['valid_values'] and result['raw_capture_missing']
     assert not diagnostic.inspect_vector(None, [], 0x08,.01,160)['valid_values']
+
+
+def test_startup_probe_preserves_invalid_read_then_requires_stability(tmp_path, monkeypatch):
+    good = dict(chip_id=0xA0, page=0, operation_mode=0x0C, unit_selection=0)
+    snapshots = iter([dict(good, chip_id=0x20), good, good, good])
+    monkeypatch.setattr(diagnostic, 'register_snapshot', lambda sensor: next(snapshots))
+    monkeypatch.setattr(diagnostic.time, 'sleep', lambda seconds: None)
+    sensor = FakeSensor(FakeDevice())
+    with diagnostic.TelemetryRecorder(tmp_path) as recorder:
+        assert diagnostic.probe_startup(sensor, sensor.i2c_device, recorder, 0x0C) == good
+    report = diagnostic.summarize(recorder.folder)
+    assert report['register_snapshots'][0]['chip_id'] == 0x20
+    assert report['startup_probe_results'] == [dict(passed=True, attempts=4, invalid_snapshots=1)]
+
+
+@pytest.mark.parametrize('field,value', [('chip_id',0x20), ('page',1),
+                                       ('operation_mode',0), ('unit_selection',2)])
+def test_startup_persistent_failure_is_not_bypassed(tmp_path, monkeypatch, field, value):
+    snapshot = dict(chip_id=0xA0, page=0, operation_mode=0x0C, unit_selection=0)
+    snapshot[field] = value
+    monkeypatch.setattr(diagnostic, 'register_snapshot', lambda sensor: snapshot.copy())
+    monkeypatch.setattr(diagnostic.time, 'sleep', lambda seconds: None)
+    sensor = FakeSensor(FakeDevice())
+    with pytest.raises(RuntimeError, match=field):
+        with diagnostic.TelemetryRecorder(tmp_path) as recorder:
+            diagnostic.probe_startup(sensor, sensor.i2c_device, recorder, 0x0C)
+    report = diagnostic.summarize(recorder.folder)
+    assert len(report['register_snapshots']) == 10
+    assert not report['startup_probe_results'][0]['passed']
+    assert report['session_errors'][0]['type'] == 'RuntimeError'

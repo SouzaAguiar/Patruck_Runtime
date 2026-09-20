@@ -54,6 +54,14 @@ python diagnose_imu.py --duration 120 --label parado-motores-desligados-repetica
 
 ## O que enviar
 
+Se a inicialização falhar, mantenha a pasta dessa tentativa. O script atualizado
+mostra os registradores lidos, repete a conferência até dez vezes e exige três
+conferências válidas consecutivas antes de coletar. Todas as falhas e seus bytes
+são preservados. Ele não força a página, não ignora unidades incompatíveis e
+gera `summary.json` também quando a inicialização falha após criar a sessão.
+O estado `closed` confirma que o gravador fechou; confira também `session_errors`
+e `startup_probe_results` para saber se a aquisição pôde começar.
+
 Copie as duas pastas completas: `metadata.json`, `status.json`, `summary.json` e
 todos os `chunk-*.jsonl`. Informe:
 
