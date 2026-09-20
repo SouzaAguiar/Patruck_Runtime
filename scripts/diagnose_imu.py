@@ -103,6 +103,22 @@ def read_pair(sensor, capture):
             'errors': errors, 'abnormal': bool(abnormal)}
 
 
+def invalid_mode_reads(transactions):
+    """Audit bytes already captured; preserve the original reread trigger."""
+    return [t for t in transactions if t.get('register') == 0x3D and t.get('success')
+            and (len(t.get('response_bytes', [])) != 1 or t['response_bytes'][0] > 0x0C)]
+
+
+def open_i2c(bus_number=None):
+    """Explicit Linux bus selection has no fallback to the hardware bus."""
+    if bus_number is not None:
+        from adafruit_extended_bus import ExtendedI2C
+        return ExtendedI2C(bus_number)
+    import board
+    import busio
+    return busio.I2C(board.SCL, board.SDA)
+
+
 def register_snapshot(sensor):
     result = {}
     for name, register in REGISTERS.items():
@@ -212,6 +228,9 @@ def summarize(folder):
             last = row['elapsed_s']
             p = row['primary']
             counts['abnormal_samples'] += int(p['abnormal'])
+            bad_mode = bool(invalid_mode_reads(p.get('transactions', [])))
+            counts['samples_with_invalid_mode_byte'] += int(bad_mode)
+            counts['samples_with_any_detected_anomaly'] += int(p['abnormal'] or bad_mode)
             counts['samples_with_io_error'] += int(bool(p['errors']))
             max_age = max(max_age, row['acquisition_ms'])
             for name in max_abs:
@@ -232,6 +251,8 @@ def summarize(folder):
     return {'session': str(folder.resolve()), 'label': metadata_json['label'], 'status': status,
             'counts': dict(counts), 'sequence_gaps': sequence_gaps,
             'observed_span_s': last-first if first is not None else 0,
+            'effective_frequency_hz': (counts['samples']-1)/(last-first)
+            if first is not None and last > first else None,
             'max_abs_readings': max_abs, 'max_acquisition_ms': max_age,
             'register_snapshots': registers, 'first_abnormal_examples': examples,
             'startup_probe_results': startup_results, 'session_errors': errors,
@@ -241,13 +262,14 @@ def summarize(folder):
                 'Normal readings in this short test do not exclude intermittent failures.',
                 'Gyro >20 rad/s is a diagnostic threshold, not the sensor full-scale limit.',
                 'A sign-bit flip is a hypothesis only; original readings are never repaired.',
+                'Invalid mode bytes are counted separately without adding rereads, to preserve timing comparability.',
             ]}
 
 
 def package_versions():
     versions = {}
     for name in ('adafruit-circuitpython-bno055', 'adafruit-circuitpython-busdevice',
-                 'adafruit-circuitpython-register', 'Adafruit-Blinka'):
+                 'adafruit-circuitpython-register', 'Adafruit-Blinka', 'adafruit-extended-bus'):
         try:
             versions[name] = metadata.version(name)
         except metadata.PackageNotFoundError:
@@ -275,7 +297,8 @@ def host_i2c_info():
                     result['device_tree_i2c_clock_hz'][str(path)] = int.from_bytes(data, 'big')
             except OSError:
                 pass
-    for path in Path('/sys/class/i2c-adapter').glob('i2c-*/name'):
+    # Linux commonly exposes these under /sys/bus, not /sys/class/i2c-adapter.
+    for path in Path('/sys/bus/i2c/devices').glob('i2c-*/name'):
         try:
             result['adapters'][path.parent.name] = path.read_text().strip()
         except OSError:
@@ -291,6 +314,8 @@ def main():
     parser.add_argument('--duration', type=float, default=120)
     parser.add_argument('--frequency', type=float, default=50)
     parser.add_argument('--address', type=lambda s: int(s, 0), default=0x29)
+    parser.add_argument('--i2c-bus', type=int,
+                        help='Explicit Linux /dev/i2c-N via adafruit-extended-bus; no fallback')
     parser.add_argument('--config', type=Path, default=Path.home()/'duck_config.json')
     parser.add_argument('--calibration', type=Path, default=Path(__file__).with_name('imu_calib_data.pkl'))
     parser.add_argument('--no-calibration', action='store_true')
@@ -305,6 +330,8 @@ def main():
         parser.error('duration must be in (0,3600]; frequency in (0,100]')
     if not 0x08 <= args.address <= 0x77:
         parser.error('invalid I2C address')
+    if args.i2c_bus is not None and args.i2c_bus < 0:
+        parser.error('i2c-bus must be nonnegative')
     # Refuse an implicit change of mounting/calibration from the runtime setup.
     config = json.loads(args.config.read_text(encoding='utf-8'))
     calibration = None
@@ -318,13 +345,13 @@ def main():
                 raise ValueError('Invalid local calibration: '+name)
     print('Diagnostico isolado: encerre o runtime e outros leitores da IMU. Nenhum motor sera acionado.')
     # Do not import raw_imu or the walking runtime: both initialize hardware.
-    import board
-    import busio
     import adafruit_bno055
     bus = None
     exit_code = 0
     recorder = TelemetryRecorder(args.output, label=args.label, metadata={
-        'diagnostic_schema': 1, 'duration_s': args.duration, 'frequency_hz': args.frequency,
+        'diagnostic_schema': 2, 'duration_s': args.duration, 'frequency_hz': args.frequency,
+        'i2c_bus': args.i2c_bus,
+        'i2c_backend': 'extended_bus' if args.i2c_bus is not None else 'board_default',
         'address': args.address, 'mode': args.mode, 'imu_upside_down': config.get('imu_upside_down', False),
         'config_sha256': file_sha256(args.config),
         'calibration_sha256': file_sha256(args.calibration) if calibration else None,
@@ -335,7 +362,7 @@ def main():
     })
     try:
         with recorder:
-            bus = busio.I2C(board.SCL, board.SDA)
+            bus = open_i2c(args.i2c_bus)
             sensor = adafruit_bno055.BNO055_I2C(bus, address=args.address)
             mode = {'ndof': adafruit_bno055.NDOF_MODE, 'imuplus': adafruit_bno055.IMUPLUS_MODE,
                     'accgyro': adafruit_bno055.ACCGYRO_MODE}[args.mode]

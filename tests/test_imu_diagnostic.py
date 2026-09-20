@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import struct
 import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -121,6 +122,42 @@ def test_nonfinite_or_missing_values_do_not_look_normal():
     result = diagnostic.inspect_vector((float('nan'),0,0), [], 0x14, diagnostic.GYRO_SCALE,20)
     assert not result['valid_values'] and result['raw_capture_missing']
     assert not diagnostic.inspect_vector(None, [], 0x08,.01,160)['valid_values']
+
+
+def test_explicit_bus_failure_never_falls_back(monkeypatch):
+    selected = []
+    def missing(bus):
+        selected.append(bus)
+        raise ValueError('No device found for /dev/i2c-8')
+    monkeypatch.setitem(sys.modules, 'adafruit_extended_bus', SimpleNamespace(ExtendedI2C=missing))
+    monkeypatch.setitem(sys.modules, 'board', None)
+    monkeypatch.setitem(sys.modules, 'busio', None)
+    with pytest.raises(ValueError, match='i2c-8'):
+        diagnostic.open_i2c(8)
+    assert selected == [8]
+
+
+def test_explicit_bus_does_not_open_default_pins(monkeypatch):
+    bus = object()
+    monkeypatch.setitem(sys.modules, 'board', None)
+    monkeypatch.setitem(sys.modules, 'busio', None)
+    monkeypatch.setitem(sys.modules, 'adafruit_extended_bus',
+                        SimpleNamespace(ExtendedI2C=lambda number: bus if number == 8 else None))
+    assert diagnostic.open_i2c(8) is bus
+
+
+def test_summary_detects_bad_mode_without_extreme_or_extra_read(tmp_path):
+    sensor = FakeSensor(FakeDevice())
+    pair = diagnostic.read_pair(sensor, sensor.i2c_device)
+    pair['transactions'].append({'register': 0x3D, 'success': True, 'response_bytes': [0x8C]})
+    assert not pair['abnormal']  # Original trigger stays comparable with old sessions.
+    with diagnostic.TelemetryRecorder(tmp_path) as recorder:
+        recorder.record('imu_sample', index=0, elapsed_s=0, primary=pair, reread=None, acquisition_ms=1)
+    report = diagnostic.summarize(recorder.folder)
+    assert report['counts']['abnormal_samples'] == 0
+    assert report['counts']['samples_with_invalid_mode_byte'] == 1
+    assert report['counts']['samples_with_any_detected_anomaly'] == 1
+    assert report['effective_frequency_hz'] is None
 
 
 def test_startup_probe_preserves_invalid_read_then_requires_stability(tmp_path, monkeypatch):

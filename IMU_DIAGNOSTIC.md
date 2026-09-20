@@ -1,5 +1,10 @@
 # Investigação da IMU do Patruck
 
+Próximo ensaio após as falhas em 10 kHz: consulte
+[I²C por software nos mesmos GPIO2/3](IMU_SOFTWARE_I2C.md). O diagnóstico aceita
+`--i2c-bus 8` para selecionar o barramento Linux explicitamente; sem essa opção,
+preserva a aquisição habitual via `board.SCL`/`board.SDA`.
+
 O primeiro teste mostrou 24 amostras extremas chegando ao modelo. O objetivo
 agora é identificar se os bytes recebidos já contêm o erro ou se a conversão
 no software produz um valor incorreto. Nenhuma correção é aplicada aos dados.
