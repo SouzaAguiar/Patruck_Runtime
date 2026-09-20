@@ -1,0 +1,104 @@
+{
+  "session": "/home/jonathan/Open_Duck_Mini_Runtime/imu_diagnostics/20260920T213219.229748Z-1308c50b",
+  "label": "parado-motores-desligados-i2cgpio8",
+  "status": {
+    "state": "closed",
+    "written_records": 5964,
+    "chunks": 116,
+    "attempted_records": 5964,
+    "dropped_records": 0,
+    "unwritten_records": 0,
+    "writer_error": null,
+    "close_reason": "completed"
+  },
+  "counts": {
+    "samples": 5957,
+    "abnormal_samples": 0,
+    "samples_with_invalid_mode_byte": 0,
+    "samples_with_any_detected_anomaly": 0,
+    "samples_with_io_error": 0,
+    "gyro_extreme_samples": 0,
+    "gyro_conversion_mismatch": 0,
+    "gyro_missing_raw_capture": 0,
+    "gyro_invalid_values": 0,
+    "acceleration_extreme_samples": 0,
+    "acceleration_conversion_mismatch": 0,
+    "acceleration_missing_raw_capture": 0,
+    "acceleration_invalid_values": 0
+  },
+  "sequence_gaps": 0,
+  "observed_span_s": 119.99949999500001,
+  "effective_frequency_hz": 49.63354014181865,
+  "max_abs_readings": {
+    "gyro": 0.00545415391248228,
+    "acceleration": 9.9
+  },
+  "max_acquisition_ms": 75.83121200002552,
+  "register_snapshots": [
+    {
+      "chip_id": 160,
+      "page": 0,
+      "calibration_status": 63,
+      "system_status": 5,
+      "system_error": 0,
+      "unit_selection": 128,
+      "operation_mode": 12,
+      "power_mode": 0,
+      "axis_map": 33,
+      "axis_sign": 4
+    },
+    {
+      "chip_id": 160,
+      "page": 0,
+      "calibration_status": 63,
+      "system_status": 5,
+      "system_error": 0,
+      "unit_selection": 128,
+      "operation_mode": 12,
+      "power_mode": 0,
+      "axis_map": 33,
+      "axis_sign": 4
+    },
+    {
+      "chip_id": 160,
+      "page": 0,
+      "calibration_status": 63,
+      "system_status": 5,
+      "system_error": 0,
+      "unit_selection": 128,
+      "operation_mode": 12,
+      "power_mode": 0,
+      "axis_map": 33,
+      "axis_sign": 4
+    },
+    {
+      "chip_id": 160,
+      "page": 0,
+      "calibration_status": 255,
+      "system_status": 5,
+      "system_error": 0,
+      "unit_selection": 128,
+      "operation_mode": 12,
+      "power_mode": 0,
+      "axis_map": 33,
+      "axis_sign": 4
+    }
+  ],
+  "first_abnormal_examples": [],
+  "startup_probe_results": [
+    {
+      "passed": true,
+      "attempts": 3,
+      "invalid_snapshots": 0
+    }
+  ],
+  "session_errors": [],
+  "interpretation": [
+    "Raw capture is the same transaction consumed by the driver, not a later read.",
+    "A reread is a new acquisition, not proof of the original true physical value.",
+    "Normal readings in this short test do not exclude intermittent failures.",
+    "Gyro >20 rad/s is a diagnostic threshold, not the sensor full-scale limit.",
+    "A sign-bit flip is a hypothesis only; original readings are never repaired.",
+    "Invalid mode bytes are counted separately without adding rereads, to preserve timing comparability."
+  ]
+}
