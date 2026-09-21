@@ -1,5 +1,8 @@
 # Coleta de telemetria no robô
 
+Para o barramento 8 e a pausa por falha da IMU, siga também
+[a atualização do runtime com controle web](IMU_RUNTIME_I2C8.md).
+
 A telemetria é opcional no script de caminhada existente. Não altera as ações,
 os offsets, a frequência configurada, os ganhos ou a forma de comandar o robô.
 O script continua sendo um controlador real: executá-lo inicializa os motores
@@ -13,7 +16,10 @@ Copie para o Raspberry Pi os arquivos atualizados deste projeto:
 - `scripts/summarize_telemetry.py`
 - `mini_bdx_runtime/mini_bdx_runtime/telemetry.py`
 - `mini_bdx_runtime/mini_bdx_runtime/raw_imu.py`
+- `mini_bdx_runtime/mini_bdx_runtime/imu_safety.py`
 - `mini_bdx_runtime/mini_bdx_runtime/web_controller.py`
+- `mini_bdx_runtime/mini_bdx_runtime/web/control.js`
+- `mini_bdx_runtime/mini_bdx_runtime/web/index.html`
 
 Se o pacote do runtime não estiver instalado em modo editável, reinstale-o na
 raiz do projeto usando o mesmo ambiente Python do controle:

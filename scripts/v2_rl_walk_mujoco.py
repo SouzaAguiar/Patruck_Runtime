@@ -8,6 +8,7 @@ from mini_bdx_runtime.rustypot_position_hwi import HWI
 from mini_bdx_runtime.onnx_infer import OnnxInfer
 
 from mini_bdx_runtime.raw_imu import Imu
+from mini_bdx_runtime.imu_safety import ImuDataError, check_sample
 from mini_bdx_runtime.poly_reference_motion import PolyReferenceMotion
 from mini_bdx_runtime.feet_contacts import FeetContacts
 from mini_bdx_runtime.eyes import Eyes
@@ -47,10 +48,19 @@ class RLWalk:
         replay_obs=None,
         cutoff_frequency=None,
         telemetry=None,
+        imu_i2c_bus=8,
+        imu_max_age_ms=50,
+        start_paused=None,
     ):
 
         self.telemetry = telemetry
         self.telemetry_observation = None
+        self.imu_fault = None
+        self.imu_fault_acknowledged = False
+        self.observation_imu = None
+        self.imu_max_age_s = imu_max_age_ms / 1000
+        if not np.isfinite(self.imu_max_age_s) or self.imu_max_age_s <= 0:
+            raise ValueError('imu-max-age-ms must be positive and finite')
         self.duck_config = DuckConfig(config_json_path=duck_config_path)
 
         self.commands = commands
@@ -80,15 +90,20 @@ class RLWalk:
                 self.control_freq, cutoff_frequency
             )
 
-        self.hwi = HWI(self.duck_config, serial_port)
-
-        self.start()
-
         self.imu = Imu(
             sampling_freq=int(self.control_freq),
             user_pitch_bias=self.pitch_bias,
             upside_down=self.duck_config.imu_upside_down,
+            i2c_bus=imu_i2c_bus,
+            max_age_s=self.imu_max_age_s,
         )
+        try:
+            self.imu.wait_ready()
+        except BaseException:
+            self.imu.stop()
+            raise
+
+        self.hwi = HWI(self.duck_config, serial_port)
 
         self.feet_contacts = FeetContacts()
 
@@ -106,7 +121,7 @@ class RLWalk:
 
         self.last_commands = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
-        self.paused = self.duck_config.start_paused
+        self.paused = self.duck_config.start_paused if start_paused is None else start_paused
 
         self.command_freq = 20  # hz
         self.controller = None
@@ -159,6 +174,7 @@ class RLWalk:
                 kps=self.hwi.kps, kds=self.hwi.kds, action_scale=self.action_scale,
                 control_freq_hz=self.control_freq, start_paused=self.paused,
                 imu_upside_down=self.duck_config.imu_upside_down,
+                imu_i2c_bus=imu_i2c_bus, imu_max_age_ms=imu_max_age_ms,
                 phase_period_steps=self.PRM.nb_steps_in_period,
                 phase_frequency_offset=self.phase_frequency_factor_offset,
                 cutoff_frequency_hz=cutoff_frequency, replay_obs=replay_obs is not None,
@@ -170,6 +186,8 @@ class RLWalk:
 
         read_start_ns = time.monotonic_ns()
         imu_data = self.imu.get_data()
+        check_sample(imu_data, self.imu_max_age_s)
+        self.observation_imu = imu_data
         imu_received_ns = time.monotonic_ns()
 
         dof_pos = self.hwi.get_present_positions(
@@ -210,6 +228,7 @@ class RLWalk:
 
         feet_contacts = self.feet_contacts.get()
         contacts_end_ns = time.monotonic_ns()
+        check_sample(imu_data, self.imu_max_age_s)  # Joint reads may have blocked.
 
         if self.telemetry is not None:
             sample_end = imu_data.get('sample_end_monotonic_ns')
@@ -223,6 +242,7 @@ class RLWalk:
                 'imu_sample_end_monotonic_ns': sample_end,
                 'imu_sample_index': imu_data.get('sample_index'),
                 'imu_age_ms': (imu_received_ns-sample_end)/1e6 if sample_end is not None else None,
+                'imu_oldest_age_ms': (contacts_end_ns-imu_data['sample_start_monotonic_ns'])/1e6,
                 'gyro_rad_s': np.array(imu_data['gyro']).copy(),
                 'accelerometer_m_s2': np.array(imu_data['accelero']).copy(),
                 'joint_position_rad': dof_pos.copy(), 'joint_velocity_rad_s': dof_vel.copy(),
@@ -249,6 +269,9 @@ class RLWalk:
         return obs
 
     def start(self):
+        # Constructor/controller setup can take seconds: validate again before
+        # any motor configuration or initial-pose command.
+        self.imu.wait_ready()
         kps = [self.pid[0]] * 14
         kds = [self.pid[2]] * 14
 
@@ -260,6 +283,44 @@ class RLWalk:
         self.hwi.turn_on()
 
         time.sleep(2)
+
+    def _publish_control_status(self):
+        if self.controller is not None and hasattr(self.controller, 'set_runtime_status'):
+            self.controller.set_runtime_status(
+                paused=self.paused, imu_fault=self.imu_fault,
+                fault_acknowledged=self.imu_fault_acknowledged,
+            )
+
+    def _pause_for_imu(self, error):
+        self.imu_fault = str(error)
+        self.imu_fault_acknowledged = False
+        self.paused = True
+        print('PAUSA IMU:', self.imu_fault, flush=True)
+        if self.telemetry is not None:
+            self.telemetry.record('imu_fault', message=self.imu_fault,
+                                  response='pause_policy_hold_last_target')
+        self._publish_control_status()
+
+    def _request_pause(self, desired):
+        if desired:
+            self.paused = True
+            if self.imu_fault:
+                self.imu_fault_acknowledged = True
+        else:
+            if self.imu_fault and (not self.imu_fault_acknowledged or
+                                   np.any(np.abs(self.last_commands) > 1e-6)):
+                return  # Acknowledge with PARAR, center controls, then INICIAR.
+            try:
+                self.imu.wait_ready(timeout_s=0)
+            except ImuDataError as exc:
+                self._pause_for_imu(exc)
+                return
+            if self.imu_fault and self.telemetry is not None:
+                self.telemetry.record('imu_fault_cleared', response='explicit_resume')
+            self.imu_fault = None
+            self.imu_fault_acknowledged = False
+            self.paused = False
+        self._publish_control_status()
 
     def get_phase_frequency_factor(self, x_velocity):
 
@@ -278,6 +339,7 @@ class RLWalk:
         previous_cycle_ns = None
         previous_paused = None
         try:
+            self.start()
             print("Starting")
             start_t = time.time()
             while True:
@@ -295,7 +357,7 @@ class RLWalk:
                     if hasattr(self.controller, "consume_desired_paused"):
                         desired_paused = self.controller.consume_desired_paused()
                         if desired_paused is not None:
-                            self.paused = desired_paused
+                            self._request_pause(desired_paused)
                             print("PAUSE" if self.paused else "UNPAUSE")
                     if self.buttons.dpad_up.triggered:
                         self.phase_frequency_factor_offset += 0.05
@@ -322,12 +384,15 @@ class RLWalk:
                         if self.duck_config.speaker:
                             self.sounds.play_random_sound()
 
-                    if self.duck_config.antennas:
+                    if self.duck_config.antennas and not self.imu_fault:
                         self.antennas.set_position_left(right_trigger)
                         self.antennas.set_position_right(left_trigger)
 
                     if self.buttons.A.triggered:
-                        self.paused = not self.paused
+                        desired = not self.paused
+                        if self.imu_fault and not self.imu_fault_acknowledged:
+                            desired = True  # First A acknowledges; next A requests resume.
+                        self._request_pause(desired)
                         if self.paused:
                             print("PAUSE")
                         else:
@@ -336,6 +401,7 @@ class RLWalk:
                 if self.telemetry is not None and self.paused != previous_paused:
                     self.telemetry.record('pause_changed', paused=self.paused)
                 previous_paused = self.paused
+                self._publish_control_status()
                 if self.paused:
                     if self.telemetry is not None:
                         self.telemetry.record('paused', commands=self.last_commands,
@@ -343,25 +409,15 @@ class RLWalk:
                     time.sleep(0.1)
                     continue
 
-                obs = self.get_obs()
+                try:
+                    obs = self.get_obs()
+                except ImuDataError as exc:
+                    self._pause_for_imu(exc)
+                    continue
                 if obs is None:
+                    time.sleep(1 / self.control_freq)
                     continue
                 observed_obs = obs.copy()
-
-                self.imitation_i += 1 * (
-                    self.phase_frequency_factor + self.phase_frequency_factor_offset
-                )
-                self.imitation_i = self.imitation_i % self.PRM.nb_steps_in_period
-                self.imitation_phase = np.array(
-                    [
-                        np.cos(
-                            self.imitation_i / self.PRM.nb_steps_in_period * 2 * np.pi
-                        ),
-                        np.sin(
-                            self.imitation_i / self.PRM.nb_steps_in_period * 2 * np.pi
-                        ),
-                    ]
-                )
 
                 if self.save_obs:
                     self.saved_obs.append(obs)
@@ -376,15 +432,15 @@ class RLWalk:
                 inference_start_ns = time.monotonic_ns()
                 action = self.policy.infer(obs)
                 inference_end_ns = time.monotonic_ns()
+                try:
+                    check_sample(self.observation_imu, self.imu_max_age_s)
+                    self.imu.get_data()  # A concurrent reader failure must not be hidden.
+                except ImuDataError as exc:
+                    self._pause_for_imu(exc)
+                    continue
 
-                self.last_last_last_action = self.last_last_action.copy()
-                self.last_last_action = self.last_action.copy()
-                self.last_action = action.copy()
-
-                # action = np.zeros(10)
-
-                self.motor_targets = self.init_pos + action * self.action_scale
-                unfiltered_targets = self.motor_targets.copy()
+                candidate_targets = self.init_pos + action * self.action_scale
+                unfiltered_targets = candidate_targets.copy()
 
                 # self.motor_targets = np.clip(
                 #     self.motor_targets,
@@ -395,31 +451,49 @@ class RLWalk:
                 # )
 
                 if self.action_filter is not None:
-                    self.action_filter.push(self.motor_targets)
+                    filter_state = (self.action_filter.current_action, self.action_filter.last_action)
+                    self.action_filter.push(candidate_targets)
                     filtered_motor_targets = self.action_filter.get_filtered_action()
                     if (
                         time.time() - start_t > 1
                     ):  # give time to the filter to stabilize
-                        self.motor_targets = filtered_motor_targets
+                        candidate_targets = filtered_motor_targets.copy()
 
-                self.prev_motor_targets = self.motor_targets.copy()
+                candidate_previous = candidate_targets.copy()
 
-                head_motor_targets = self.last_commands[3:] + self.motor_targets[5:9]
-                self.motor_targets[5:9] = head_motor_targets
+                head_motor_targets = self.last_commands[3:] + candidate_targets[5:9]
+                candidate_targets[5:9] = head_motor_targets
 
                 action_dict = make_action_dict(
-                    self.motor_targets, list(self.hwi.joints.keys())
+                    candidate_targets, list(self.hwi.joints.keys())
                 )
 
                 write_start_ns = time.monotonic_ns()
+                try:
+                    check_sample(self.observation_imu, self.imu_max_age_s, now_ns=write_start_ns)
+                except ImuDataError as exc:
+                    if self.action_filter is not None:
+                        self.action_filter.current_action, self.action_filter.last_action = filter_state
+                    self._pause_for_imu(exc)
+                    continue
                 try:
                     self.hwi.set_position_all(action_dict)
                 except Exception as exc:
                     if self.telemetry is not None:
                         self.telemetry.record('motor_write_failure', cycle=i, message=str(exc),
-                                              motor_targets_rad=self.motor_targets)
+                                              motor_targets_rad=candidate_targets)
                     raise
                 write_end_ns = time.monotonic_ns()
+                # Only executed actions enter the next observation's history.
+                self.last_last_last_action = self.last_last_action.copy()
+                self.last_last_action = self.last_action.copy()
+                self.last_action = action.copy()
+                self.motor_targets = candidate_targets
+                self.prev_motor_targets = candidate_previous
+                self.imitation_i = (self.imitation_i + 1 * (self.phase_frequency_factor
+                                    + self.phase_frequency_factor_offset)) % self.PRM.nb_steps_in_period
+                angle = self.imitation_i / self.PRM.nb_steps_in_period * 2 * np.pi
+                self.imitation_phase = np.array([np.cos(angle), np.sin(angle)])
 
                 if self.telemetry is not None:
                     self.telemetry.record(
@@ -454,6 +528,10 @@ class RLWalk:
         except KeyboardInterrupt:
             if self.telemetry is not None:
                 self.telemetry.record('control_interrupted', cycle=i)
+        finally:
+            self.imu.stop()
+            self.paused = True
+            self._publish_control_status()
             if self.duck_config.antennas:
                 self.antennas.stop()
             if self.duck_config.eyes:
@@ -464,7 +542,7 @@ class RLWalk:
 
         if self.save_obs:
             pickle.dump(self.saved_obs, open("robot_saved_obs.pkl", "wb"))
-        print("TURNING OFF")
+        print("Controle encerrado; nenhum novo alvo sera enviado. Torque nao foi alterado.")
 
 
 if __name__ == "__main__":
@@ -521,6 +599,12 @@ if __name__ == "__main__":
     parser.add_argument("--cutoff_frequency", type=float, default=None)
     parser.add_argument('--telemetry-dir', help='Directory for a new, unique telemetry session')
     parser.add_argument('--telemetry-label', default='test', help='Example: student-forward-floor-a')
+    parser.add_argument('--imu-i2c-bus', '--i2c-bus', type=int, default=8,
+                        help='Linux IMU bus (default 8); no fallback. Use 1 only after restoring hardware I2C.')
+    parser.add_argument('--imu-max-age-ms', type=float, default=50,
+                        help='Pause policy when IMU age from acquisition start exceeds this limit')
+    parser.add_argument('--start-paused', action='store_true', default=None,
+                        help='Wait for an explicit start command after initial pose setup')
 
     args = parser.parse_args()
     pid = [args.p, args.i, args.d]
@@ -538,9 +622,10 @@ if __name__ == "__main__":
             'pitch_bias_requested_deg': args.pitch_bias,
             'cutoff_frequency_hz': args.cutoff_frequency,
             'web_command_timeout_s': args.web_command_timeout,
+            'imu_i2c_bus': args.imu_i2c_bus, 'imu_max_age_ms': args.imu_max_age_ms,
             'source_sha256': {
                 name: file_sha256(Path(__file__).resolve().parents[1]/'mini_bdx_runtime'/'mini_bdx_runtime'/name)
-                for name in ('raw_imu.py', 'web_controller.py', 'telemetry.py', 'rustypot_position_hwi.py')
+                for name in ('raw_imu.py', 'imu_safety.py', 'web_controller.py', 'telemetry.py', 'rustypot_position_hwi.py')
             },
         })
     with recorder as telemetry:
@@ -566,6 +651,9 @@ if __name__ == "__main__":
             replay_obs=args.replay_obs,
             cutoff_frequency=args.cutoff_frequency,
             telemetry=telemetry,
+            imu_i2c_bus=args.imu_i2c_bus,
+            imu_max_age_ms=args.imu_max_age_ms,
+            start_paused=args.start_paused,
         )
         print("Done instantiating RLWalk")
         rl_walk.run()

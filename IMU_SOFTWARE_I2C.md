@@ -20,8 +20,9 @@ caminhada durante este ensaio.
 
 Copie a versão atualizada de `scripts/diagnose_imu.py` deste projeto para
 `/home/jonathan/Open_Duck_Mini_Runtime/scripts/diagnose_imu.py`. Nenhuma alteração
-em `raw_imu.py` é necessária para este ensaio. O runtime habitual continua
-esperando o controlador de hardware e não está migrado para o barramento 8.
+em `raw_imu.py` é necessária para este ensaio isolado. O runtime de caminhada
+agora tem integração própria com o barramento 8; consulte
+[a atualização e uso no controle web](IMU_RUNTIME_I2C8.md).
 
 No ambiente `(patruck-runtime)` já usado:
 

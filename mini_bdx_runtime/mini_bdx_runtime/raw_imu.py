@@ -1,26 +1,39 @@
-import adafruit_bno055
-import board
-import busio
 import numpy as np
 import os
 import pickle
 
-from queue import Queue
-from threading import Thread
+from threading import Thread, Event
 import time
+from mini_bdx_runtime.imu_safety import CheckedModeDevice, ImuDataError, LatestImuSample, open_i2c
 
 
-# TODO filter spikes
 class Imu:
     def __init__(
-        self, sampling_freq, user_pitch_bias=0, calibrate=False, upside_down=True
+        self, sampling_freq, user_pitch_bias=0, calibrate=False, upside_down=True,
+        i2c_bus=None, max_age_s=.05,
     ):
         self.sampling_freq = sampling_freq
         self.calibrate = calibrate
+        if not np.isfinite(sampling_freq) or sampling_freq <= 0:
+            raise ValueError('IMU sampling frequency must be positive')
+        self.samples = LatestImuSample(max_age_s)
+        self.max_age_s = max_age_s
+        self.i2c_bus = i2c_bus
+        self._stop_event = Event()
+        import adafruit_bno055
 
-        i2c = busio.I2C(board.SCL, board.SDA)
-        self.imu = adafruit_bno055.BNO055_I2C(i2c,address=0x29)
+        self.bus = open_i2c(i2c_bus)
+        try:
+            self.imu = adafruit_bno055.BNO055_I2C(self.bus,address=0x29)
+            self._configure_sensor(upside_down)
+            self._thread = Thread(target=self.imu_worker, daemon=True)
+            self._thread.start()
+        except BaseException:
+            self.bus.deinit()
+            raise
 
+    def _configure_sensor(self, upside_down):
+        import adafruit_bno055
         # self.imu.mode = adafruit_bno055.IMUPLUS_MODE
         # self.imu.mode = adafruit_bno055.ACCGYRO_MODE
         # self.imu.mode = adafruit_bno055.GYRONLY_MODE
@@ -90,13 +103,13 @@ class Imu:
 
         # self.tare_x()
 
-        self.last_imu_data = [0, 0, 0, 0]
-        self.last_imu_data = {
-            "gyro": [0, 0, 0],
-            "accelero": [0, 0, 0],
-        }
-        self.imu_queue = Queue(maxsize=1)
-        Thread(target=self.imu_worker, daemon=True).start()
+        for register, expected in ((0x00, 0xA0), (0x07, 0), (0x3D, 0x0C)):
+            actual = self.imu._read_register(register)
+            if actual != expected:
+                raise ImuDataError(f'IMU: registrador 0x{register:02x}=0x{actual:02x}, esperado 0x{expected:02x}')
+        if self.imu._read_register(0x3B) & 3:
+            raise ImuDataError('IMU: unidades incompativeis com o driver')
+        self.imu.i2c_device = CheckedModeDevice(self.imu.i2c_device)
 
     def tare_x(self):
         print("Taring x ...")
@@ -122,44 +135,39 @@ class Imu:
 
     def imu_worker(self):
         sample_index = 0
-        while True:
-            s = time.time()
-            sample_start_ns = time.monotonic_ns()
-            try:
-                gyro = np.array(self.imu.gyro).copy()
-                accelero = np.array(self.imu.acceleration).copy()
-            except Exception as e:
-                print("[IMU]:", e)
-                continue
-
-            if gyro is None or accelero is None:
-                continue
-
-            if gyro.any() is None or accelero.any() is None:
-                continue
-
-            accelero[0] -= self.x_offset
-
-            data = {
-                "gyro": gyro,
-                "accelero": accelero,
-                "sample_start_monotonic_ns": sample_start_ns,
-                "sample_end_monotonic_ns": time.monotonic_ns(),
-                "sample_index": sample_index,
-            }
-            sample_index += 1
-
-            self.imu_queue.put(data)
-            took = time.time() - s
-            time.sleep(max(0, 1 / self.sampling_freq - took))
+        try:
+            while not self._stop_event.is_set():
+                started = time.monotonic()
+                sample_start_ns = time.monotonic_ns()
+                try:
+                    gyro = np.asarray(self.imu.gyro, dtype=float)
+                    accelero = np.asarray(self.imu.acceleration, dtype=float)
+                    if accelero.shape == (3,):
+                        accelero = accelero.copy()
+                        accelero[0] -= self.x_offset
+                    self.samples.publish({
+                        'gyro': gyro, 'accelero': accelero,
+                        'sample_start_monotonic_ns': sample_start_ns,
+                        'sample_end_monotonic_ns': time.monotonic_ns(),
+                        'sample_index': sample_index,
+                    })
+                except Exception as exc:
+                    self.samples.fail(f'{type(exc).__name__}: {exc}')
+                sample_index += 1
+                self._stop_event.wait(max(0, 1/self.sampling_freq-(time.monotonic()-started)))
+        finally:
+            self.samples.fail('IMU: leitura encerrada')
+            self.bus.deinit()
 
     def get_data(self):
-        try:
-            self.last_imu_data = self.imu_queue.get(False)  # non blocking
-        except Exception:
-            pass
+        return self.samples.get()
 
-        return self.last_imu_data
+    def wait_ready(self, timeout_s=3):
+        return self.samples.wait_ready(timeout_s)
+
+    def stop(self):
+        self._stop_event.set()
+        self._thread.join(timeout=1)
 
 
 if __name__ == "__main__":

@@ -2,6 +2,7 @@
   const token = new URLSearchParams(location.search).get('token') || '';
   const state = {left_x:0,left_y:0,right_x:0,right_y:0,mode:'walk',buttons:{},left_trigger:0,right_trigger:0};
   let paused = true;
+  let imuFault = false;
   const status = document.querySelector('#status');
   let socket, timer, reconnectDelay = 500;
 
@@ -24,6 +25,24 @@
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
     socket = new WebSocket(`${protocol}//${location.host}/ws?token=${encodeURIComponent(token)}`);
     socket.onopen=()=>{reconnectDelay=500;setStatus(true,'Conectado');timer=setInterval(send,50);send()};
+    socket.onmessage=event=>{
+      let message;
+      try { message=JSON.parse(event.data); } catch { return; }
+      if(message.type!=='runtime_status')return;
+      const fault=Boolean(message.imu_fault);
+      if(fault&&!imuFault){delete state.paused;zeroMotion();}
+      imuFault=fault;
+      paused=Boolean(message.paused);
+      pauseButton.textContent=paused?'INICIAR':'PAUSAR';
+      pauseButton.classList.toggle('active',!paused);
+      pauseButton.disabled=fault&&!message.fault_acknowledged;
+      const notice=document.querySelector('#imuFault');
+      notice.classList.toggle('hidden',!fault);
+      notice.textContent=fault?(message.fault_acknowledged
+        ?'IMU: centralize os controles. INICIAR só retoma com leituras recentes.'
+        :'Pausa por falha da IMU. Apoie o robô e pressione PARAR antes de retomar.'):'';
+      setStatus(true,fault?'Pausado pela IMU':(paused?'Pausado':'Em execução'));
+    };
     socket.onclose=()=>{clearInterval(timer);zeroMotion();setStatus(false,'Reconectando…');setTimeout(connect,reconnectDelay);reconnectDelay=Math.min(5000,reconnectDelay*1.6)};
     socket.onerror=()=>socket.close();
   }

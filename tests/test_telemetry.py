@@ -14,6 +14,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'mini_bdx_runtime'))
 from mini_bdx_runtime.telemetry import TelemetryRecorder
+from mini_bdx_runtime.imu_safety import ImuDataError, check_sample, LatestImuSample
 
 spec = importlib.util.spec_from_file_location('summary', ROOT/'scripts/summarize_telemetry.py')
 summary = importlib.util.module_from_spec(spec)
@@ -95,7 +96,8 @@ def load_walk(source):
     node = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == 'RLWalk')
     namespace = {'np': np, 'HOME_DIR': '', 'time': SimpleNamespace(
         time=time.time, monotonic_ns=time.monotonic_ns, sleep=lambda seconds: None),
-        'make_action_dict': lambda targets, names: dict(zip(names, targets))}
+        'make_action_dict': lambda targets, names: dict(zip(names, targets)),
+        'ImuDataError': ImuDataError, 'check_sample': check_sample}
     exec(compile(ast.Module(body=[node], type_ignores=[]), '<walk-class-only>', 'exec'), namespace)
     return namespace['RLWalk']
 
@@ -104,6 +106,11 @@ def make_walk(cls, telemetry=None, fail_first_read=False):
     walk = cls.__new__(cls)
     walk.telemetry = telemetry
     walk.telemetry_observation = None
+    walk.imu_fault = None
+    walk.imu_fault_acknowledged = False
+    walk.imu_max_age_s = .05
+    walk.observation_imu = None
+    walk.start = lambda: None  # Hardware start is covered separately with stubs.
     walk.num_dofs = 14
     walk.commands = False
     walk.controller = None
@@ -127,11 +134,13 @@ def make_walk(cls, telemetry=None, fail_first_read=False):
     walk.phase_frequency_factor = 1.
     walk.phase_frequency_factor_offset = .05
     walk.feet_contacts = SimpleNamespace(get=lambda: [True, False], stop=lambda: None)
-    stamp = time.monotonic_ns()
-    walk.imu = SimpleNamespace(get_data=lambda: {
+    def sample():
+        stamp = time.monotonic_ns()
+        return {
         'gyro': np.array([.1,.2,.3]), 'accelero': np.array([1.,0.,9.81]),
         'sample_start_monotonic_ns': stamp-1000000,
-        'sample_end_monotonic_ns': stamp, 'sample_index': 4})
+        'sample_end_monotonic_ns': stamp, 'sample_index': 4}
+    walk.imu = SimpleNamespace(get_data=sample, wait_ready=lambda **kwargs: sample(), stop=lambda: None)
     writes, inputs = [], []
     def infer(obs):
         if len(inputs) == 3:
@@ -197,20 +206,19 @@ def test_sensor_failure_is_recorded(tmp_path):
 
 
 def test_imu_adds_timestamp_without_changing_readings():
-    tree = ast.parse((ROOT/'mini_bdx_runtime/mini_bdx_runtime/raw_imu.py').read_text())
-    node = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == 'Imu')
-    def stop(seconds):
-        raise KeyboardInterrupt
-    env = {'np': np, 'time': SimpleNamespace(time=time.time, monotonic_ns=time.monotonic_ns, sleep=stop)}
-    exec(compile(ast.Module(body=[node], type_ignores=[]), '<imu-class-only>', 'exec'), env)
-    imu = env['Imu'].__new__(env['Imu'])
+    from mini_bdx_runtime.raw_imu import Imu  # Lazy imports: safe on a PC.
+    imu = Imu.__new__(Imu)
     imu.imu = SimpleNamespace(gyro=[1.,2.,3.], acceleration=[4.,5.,6.])
     imu.x_offset = .5
     imu.sampling_freq = 50
     samples = []
-    imu.imu_queue = SimpleNamespace(put=samples.append)
-    with pytest.raises(KeyboardInterrupt):
-        imu.imu_worker()
+    imu._stop_event = Event()
+    def publish(sample):
+        samples.append(sample)
+        imu._stop_event.set()
+    imu.samples = SimpleNamespace(publish=publish, fail=lambda error: None)
+    imu.bus = SimpleNamespace(deinit=lambda: None)
+    imu.imu_worker()
     np.testing.assert_array_equal(samples[0]['gyro'], [1.,2.,3.])
     np.testing.assert_array_equal(samples[0]['accelero'], [3.5,5.,6.])
     assert samples[0]['sample_start_monotonic_ns'] <= samples[0]['sample_end_monotonic_ns']

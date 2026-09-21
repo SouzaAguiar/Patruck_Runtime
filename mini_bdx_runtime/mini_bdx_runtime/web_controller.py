@@ -67,6 +67,7 @@ class WebCommandState:
     _connected: bool = field(default=False, init=False)
     _desired_paused: bool | None = field(default=None, init=False)
     last_snapshot_metadata: dict[str, Any] = field(default_factory=dict, init=False)
+    _runtime_status: dict[str, Any] | None = field(default=None, init=False)
 
     def update(self, payload: dict[str, Any]) -> None:
         mode = payload.get("mode", "walk")
@@ -139,6 +140,14 @@ class WebCommandState:
             self._desired_paused = None
             return desired
 
+    def set_runtime_status(self, **status) -> None:
+        with self._lock:
+            self._runtime_status = dict(status)
+
+    def runtime_status(self):
+        with self._lock:
+            return dict(self._runtime_status) if self._runtime_status is not None else None
+
 
 class WebController:
     def __init__(
@@ -205,6 +214,9 @@ class WebController:
                         payload = json.loads(message.data)
                         if payload.get("type") == "command":
                             self.state.update(payload)
+                            status = self.state.runtime_status()
+                            if status is not None:
+                                await ws.send_json({'type': 'runtime_status', **status})
                     except (json.JSONDecodeError, AttributeError):
                         await ws.send_json({"type": "error", "message": "Invalid command"})
                 elif message.type == WSMsgType.ERROR:
@@ -292,3 +304,6 @@ class WebController:
 
     def consume_desired_paused(self) -> bool | None:
         return self.state.consume_desired_paused()
+
+    def set_runtime_status(self, **status):
+        self.state.set_runtime_status(**status)
