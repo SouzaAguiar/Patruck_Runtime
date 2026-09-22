@@ -1,0 +1,10 @@
+{
+  "state": "closed",
+  "written_records": 5933,
+  "chunks": 97,
+  "attempted_records": 5933,
+  "dropped_records": 0,
+  "unwritten_records": 0,
+  "writer_error": null,
+  "close_reason": "completed"
+}
