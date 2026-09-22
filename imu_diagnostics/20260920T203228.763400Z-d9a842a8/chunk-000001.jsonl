@@ -1,2 +1,0 @@
-{"error_type":"RuntimeError","message":"Unexpected chip ID or register page; inspect recorded registers","kind":"session_error","sequence":1,"recorded_monotonic_ns":170003059490,"recorded_unix_ns":1789936350069939916}
-{"reason":"error","kind":"session_end","sequence":2,"recorded_monotonic_ns":170003124231,"recorded_unix_ns":1789936350070004396}

@@ -1,1 +1,0 @@
-{"stage":"initial","registers":{"chip_id":160,"page":128,"calibration_status":191,"system_status":5,"system_error":128,"unit_selection":128,"operation_mode":140,"power_mode":128,"axis_map":161,"axis_sign":132},"kind":"imu_registers","sequence":0,"recorded_monotonic_ns":170002861412,"recorded_unix_ns":1789936350069742880}
