@@ -68,7 +68,7 @@ def test_modes_record_and_continue_after_fault(tmp_path, monkeypatch, mode):
     monkeypatch.setitem(sys.modules, "onnxruntime", SimpleNamespace(
         SessionOptions=SimpleNamespace, InferenceSession=Session))
     output = tmp_path/"output"
-    result = diag.main(["--mode", mode, "--duration", ".14", "--output", str(output),
+    result = diag.main(["--mode", mode, "--duration", "1", "--max-age-ms", "10000", "--output", str(output),
                         "--config", str(tmp_path/"config.json"), "--onnx-model", str(tmp_path/"fake.onnx")])
     folder = next(output.iterdir())
     rows = [json.loads(l) for f in sorted(folder.glob("chunk-*.jsonl")) for l in f.read_text().splitlines()]
@@ -85,7 +85,9 @@ def test_modes_record_and_continue_after_fault(tmp_path, monkeypatch, mode):
         assert calls[0][0,6] == np.float32(.1)
     status = json.loads((folder/"status.json").read_text())
     assert status["dropped_records"] == 0 and status["unwritten_records"] == 0
-    assert "synthetic_targets" in cycles[0] if mode == "telemetry" else "synthetic_targets" not in cycles[0]
+    assert ("serialization_load_only" in cycles[0]) == (mode in ("onnx", "telemetry"))
+    assert (folder/"gc_timing.json").is_file()
+    assert (folder/"i2c_timing.json").is_file()
     assert (folder/"writer_timing.json").is_file()
 
 
@@ -116,3 +118,38 @@ def test_invalid_duration_and_missing_model_fail_before_imports():
         diag.main(["--duration", "nan"])
     with pytest.raises(SystemExit):
         diag.main(["--mode", "onnx"])
+
+
+def test_transaction_trace_preserves_buffers_and_errors():
+    trace = diag.TimingTrace(4, 4)
+    class Device:
+        def write_then_readinto(self, outgoing, incoming, **kwargs):
+            incoming[0] = 12
+            return 42
+    device = diag.TimedDevice(Device(), trace)
+    aliased = bytearray([61])
+    assert device.write_then_readinto(aliased, aliased) == 42
+    assert aliased == bytearray([12])
+    event = trace.export()["rows"][0]
+    assert event[2:] == [61, 0] and event[1] >= event[0]
+    class Broken:
+        def write_then_readinto(self, *args, **kwargs):
+            raise OSError("injected I2C")
+    with pytest.raises(OSError):
+        diag.TimedDevice(Broken(), trace).write_then_readinto(bytearray([20]), bytearray(6))
+    assert trace.export()["rows"][1][2:] == [20, 1]
+
+
+def test_trace_overflow_is_explicit_and_bounded():
+    trace = diag.TimingTrace(1, 2)
+    trace.add(1, 2)
+    trace.add(3, 4)
+    assert trace.export() == dict(count=1, dropped=1, rows=[[1,2]])
+
+
+def test_gc_observer_is_removed_after_setup_error(tmp_path, monkeypatch):
+    import gc
+    monkeypatch.setitem(sys.modules, "mini_bdx_runtime.web_controller", SimpleNamespace(WebController=lambda **kw: (_ for _ in ()).throw(RuntimeError("setup"))))
+    before = list(gc.callbacks)
+    assert diag.main(["--mode", "web", "--duration", ".1", "--output", str(tmp_path)]) == 2
+    assert gc.callbacks == before

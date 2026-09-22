@@ -1,6 +1,9 @@
 """Web/IMU/ONNX load diagnostics. Never imports walking or motor control."""
 import argparse
+from array import array
 from collections import deque
+import copy
+import gc
 import json
 import math
 from pathlib import Path
@@ -9,6 +12,55 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "mini_bdx_runtime"))
+
+
+class TimingTrace:
+    """Preallocated numeric storage: no growing list of GC-tracked event dicts."""
+    def __init__(self, capacity, width):
+        self.data = array('q', [0]) * (capacity * width)
+        self.capacity, self.width = capacity, width
+        self.count = self.dropped = 0
+
+    def add(self, *values):
+        if self.count >= self.capacity:
+            self.dropped += 1
+            return
+        offset = self.count*self.width
+        for i, value in enumerate(values):
+            self.data[offset+i] = value
+        self.count += 1
+
+    def export(self):
+        return dict(count=self.count, dropped=self.dropped,
+                    rows=[list(self.data[i*self.width:(i+1)*self.width]) for i in range(self.count)])
+
+
+class TimedDevice:
+    """Time existing transactions, without extra bus reads or byte changes."""
+    def __init__(self, device, trace):
+        self.device, self.trace = device, trace
+
+    def __enter__(self):
+        self.device.__enter__()
+        return self
+
+    def __exit__(self, *args):
+        return self.device.__exit__(*args)
+
+    def __getattr__(self, name):
+        return getattr(self.device, name)
+
+    def write_then_readinto(self, outgoing, incoming, **kwargs):
+        register = int(outgoing[kwargs.get('out_start', 0)])
+        start = time.monotonic_ns()
+        failed = 0
+        try:
+            return self.device.write_then_readinto(outgoing, incoming, **kwargs)
+        except BaseException:
+            failed = 1
+            raise
+        finally:
+            self.trace.add(start, time.monotonic_ns(), register, failed)
 
 
 def observation(sample, commands):
@@ -46,11 +98,13 @@ def inspect_sample(imu, sample, limit_s, stage):
                             used_sample_index=sample.get("sample_index") if sample else None)
 
 
-def make_imu(bus, limit_s, config, producer_events):
+def make_imu(bus, limit_s, config, producer_events, transaction_trace=None):
     from mini_bdx_runtime.raw_imu import Imu
 
     class DiagnosticImu(Imu):
         def imu_worker(self):
+            if transaction_trace is not None:
+                self.imu.i2c_device = TimedDevice(self.imu.i2c_device, transaction_trace)
             original = self.samples.fail
             def record_failure(error):
                 producer_events.append(dict(monotonic_ns=time.monotonic_ns(), message=str(error)))
@@ -73,6 +127,8 @@ def main(argv=None):
     parser.add_argument("--max-age-ms", type=float, default=50)
     parser.add_argument("--config", type=Path, default=Path.home()/"duck_config.json")
     parser.add_argument("--onnx-model", type=Path)
+    parser.add_argument("--payload-profile", type=Path,
+                        default=ROOT/"scripts/data/runtime_telemetry_payload.json")
     parser.add_argument("--onnx-threads", type=int, default=0,
                         help="0 preserves ONNX defaults; 1 is a separate comparison")
     parser.add_argument("--output", type=Path, default=ROOT/"web_imu_diagnostics")
@@ -89,6 +145,13 @@ def main(argv=None):
         parser.error("onnx and telemetry modes require --onnx-model pointing to an existing file")
     if use_imu and (not args.config.is_file() or not Path("imu_calib_data.pkl").is_file()):
         parser.error("Run from scripts with imu_calib_data.pkl and an existing --config")
+    profile = None
+    if use_onnx:
+        if not args.payload_profile.is_file():
+            parser.error("Copy scripts/data/runtime_telemetry_payload.json with this script")
+        profile = json.loads(args.payload_profile.read_text(encoding="utf-8"))
+        if not isinstance(profile.get('payload'), dict):
+            parser.error("Invalid payload profile")
 
     import numpy as np
     from mini_bdx_runtime.web_controller import WebController
@@ -96,6 +159,11 @@ def main(argv=None):
     config = json.loads(args.config.read_text(encoding="utf-8")) if use_imu else {}
     events = deque(maxlen=20000)
     writer_events = deque(maxlen=2000)
+    transaction_trace = TimingTrace(int(args.duration*250)+1000, 4)
+    gc_trace = TimingTrace(10000, 5)
+    def observe_gc(phase, info):
+        gc_trace.add(time.monotonic_ns(), int(phase == 'stop'), info.get('generation', -1),
+                     info.get('collected', 0), info.get('uncollectable', 0))
 
     class TimedRecorder(TelemetryRecorder):
         def _publish(self, rows):
@@ -114,6 +182,11 @@ def main(argv=None):
                     config_sha256=file_sha256(args.config) if use_imu else None,
                     calibration_sha256=file_sha256("imu_calib_data.pkl") if use_imu else None,
                     script_sha256=file_sha256(__file__),
+                    payload_profile_sha256=file_sha256(args.payload_profile) if profile else None,
+                    payload_source_session=profile.get('source_session') if profile else None,
+                    payload_reference_cycle_bytes=profile.get('source_cycle_compact_bytes') if profile else None,
+                    instrumentation='preallocated I2C transaction and GC event traces; GC remains enabled as configured',
+                    gc_enabled=gc.isenabled(), gc_thresholds=gc.get_threshold(),
                     source_sha256={n:file_sha256(ROOT/"mini_bdx_runtime"/"mini_bdx_runtime"/n)
                                    for n in ("raw_imu.py", "imu_safety.py", "web_controller.py", "telemetry.py")})
     recorder = TimedRecorder(args.output, label="web-diagnostic-"+args.mode, metadata=metadata)
@@ -123,6 +196,7 @@ def main(argv=None):
     reason = "completed"
     exit_code = 0
     measurement_end_ns = None
+    gc.callbacks.append(observe_gc)
     try:
         session = None
         if use_onnx:
@@ -137,7 +211,7 @@ def main(argv=None):
             if len(inp.shape) not in (1, 2):
                 raise ValueError("Expected ONNX input shape [101] or [1,101]")
         if use_imu:
-            imu = make_imu(args.i2c_bus, args.max_age_ms/1000, config, events)
+            imu = make_imu(args.i2c_bus, args.max_age_ms/1000, config, events, transaction_trace)
             imu.wait_ready()
         controller = WebController(command_freq=20, port=args.port, token=args.token, camera=args.camera)
         print("DIAGNOSTICO SEM MOTORES: INICIAR/PARAR sao registrados; a coleta continua apos falhas.")
@@ -171,12 +245,10 @@ def main(argv=None):
                 _, fault = inspect_sample(imu, sample, args.max_age_ms/1000, "after_inference")
                 if fault:
                     row["faults"].append(fault)
-                if args.mode == "telemetry":
-                    # Approximate runtime payload size, explicitly synthetic and never sent to servos.
-                    row.update(policy_obs=obs.tolist(), observed_obs=obs.tolist(), action=action.tolist(),
-                               synthetic_targets=(action*.25).tolist(), synthetic_previous_targets=[0.]*14,
-                               synthetic_positions=[0.]*14, synthetic_velocities=[0.]*14,
-                               synthetic_servo_goals=(action*.25).tolist())
+            if profile is not None:
+                # Identical allocation workload in buffered and continuous modes.
+                # Historical numbers are ONLY serialization load, never live observations/actions.
+                row['serialization_load_only'] = copy.deepcopy(profile['payload'])
             row["work_end_monotonic_ns"] = time.monotonic_ns()
             faulty_polls += bool(row["faults"])
             polls += 1
@@ -197,6 +269,7 @@ def main(argv=None):
         measurement_end_ns = time.monotonic_ns()
         if imu is not None:
             imu.stop()
+        gc.callbacks.remove(observe_gc)
         # Non-telemetry stages write only after measurements stop; same JSONL format.
         for row in buffered:
             while recorder.queue.full() and not recorder.error:
@@ -211,6 +284,12 @@ def main(argv=None):
                         producer_event_buffer_full=len(events)==events.maxlen)
         recorder.close(reason)
         (recorder.folder/"writer_timing.json").write_text(json.dumps(list(writer_events), indent=2), encoding="utf-8")
+        for name, trace, columns in (
+            ('i2c_timing', transaction_trace, ['start_ns', 'end_ns', 'register', 'failed']),
+            ('gc_timing', gc_trace, ['time_ns', 'stop', 'generation', 'collected', 'uncollectable']),
+        ):
+            (recorder.folder/(name+'.json')).write_text(
+                json.dumps(dict(columns=columns, **trace.export())), encoding='utf-8')
         print(json.dumps(dict(folder=str(recorder.folder), polls=polls, faulty_polls=faulty_polls,
                               mode=args.mode, reason=reason), indent=2))
     if recorder.error or recorder.dropped or recorder.thread.is_alive():

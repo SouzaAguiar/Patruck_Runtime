@@ -4,7 +4,9 @@ O `scripts/web_control_test.py` agora oferece quatro modos independentes. Nenhum
 importa HWI, o script de caminhada ou drivers de motores. As saídas do ONNX são
 descartadas. A câmera só é inicializada com `--camera`.
 
-Copie o `scripts/web_control_test.py` atualizado para o Raspberry. Ele usa os
+Copie o `scripts/web_control_test.py` atualizado e o novo
+`scripts/data/runtime_telemetry_payload.json` para os mesmos caminhos no Raspberry.
+O JSON é obrigatório nos modos ONNX/telemetry. O script usa os
 mesmos módulos `raw_imu.py`, `imu_safety.py`, `web_controller.py` e `telemetry.py`
 já instalados na integração I²C8. Não há nova dependência além das usadas pelo
 runtime; os modos ONNX precisam do `onnxruntime` já utilizado na caminhada.
@@ -88,9 +90,12 @@ gravação posterior. Aguarde a saída do processo para copiar os dados. Interru
 por Ctrl+C salva as linhas disponíveis; desligamento abrupto pode perder o buffer.
 A duração máxima permitida é 300 segundos para limitar o uso de memória.
 
-No modo `telemetry`, as linhas são gravadas continuamente. O volume é aproximado
-ao da caminhada: inclui observações, ações e vetores sintéticos. Os dados de juntas,
-contatos e histórico do ONNX são sintéticos; só IMU e comandos web são reais.
+No modo `telemetry`, as linhas são gravadas continuamente. A carga numérica vem de um ciclo real de caminhada, armazenado no JSON de
+referência. Ela é copiada no campo `serialization_load_only` nos modos ONNX e
+telemetry, inclusive nos ciclos com falha, e nunca é usada para inferência ou
+enviada a motores. Os campos extras de diagnóstico podem aumentar o volume total
+em relação à linha de referência. Os dados de juntas,
+contatos e histórico da entrada ONNX continuam sintéticos; só IMU e comandos web são reais.
 **Este teste mede carga e atrasos, não qualidade da política ou equilíbrio.** Não
 reproduz comunicação serial dos servos, ruído elétrico de motores nem carga física.
 
@@ -111,3 +116,46 @@ opções. O padrão 0 conserva a escolha automática de threads do ONNX Runtime.
 
 Envie as quatro pastas completas para análise. Nenhum arquivo original de
 telemetria ou configuração é substituído pelo diagnóstico.
+
+
+## Novo ensaio: carga real de dados e rastreamento dos atrasos
+
+Copie estes **dois arquivos**, preservando a subpasta `data`:
+
+- `scripts/web_control_test.py`
+- `scripts/data/runtime_telemetry_payload.json`
+
+Repita primeiro `--mode onnx` e depois `--mode telemetry`, com duração de 120 s,
+o mesmo caminho de student, câmera desligada e a mesma sequência de comandos
+acima. Faça duas rodadas de cada, se possível, alternando a ordem. Os comandos
+são os mesmos da seção anterior. O arquivo de referência é encontrado
+automaticamente; `--payload-profile` permite selecionar outro explicitamente.
+Não é necessário copiar toda a sessão antiga para o Raspberry.
+
+Esses dois modos agora copiam a mesma carga numérica histórica por ciclo.
+No modo ONNX, ela fica no buffer até o fim; no modo telemetry, segue para o
+mesmo gravador assíncrono. A alocação do buffer e o custo do gravador ainda
+são diferentes; o objetivo é medir essa diferença, não declarar equivalência
+perfeita de todas as threads do runtime. Os resultados antigos foram preservados.
+
+Além dos arquivos anteriores, cada sessão gera:
+
+- `gc_timing.json`: linhas com timestamp monotônico, fase (`stop=0` início,
+  `stop=1` fim), geração, objetos coletados e não coletáveis. O coletor não é
+  desativado nem tem seus limiares alterados. O rastreamento cobre inicialização
+  e medição até o encerramento do leitor; exclui a exportação posterior.
+- `i2c_timing.json`: início/fim de cada `write_then_readinto` do leitor, endereço
+  do registrador e indicador de exceção. Não faz leituras extras, não muda bytes
+  nem contorna a validação. Cobre a aquisição contínua, não a configuração inicial.
+  A duração inclui a chamada existente e pode incluir atraso de agendamento;
+  não equivale a uma medição elétrica do sinal no fio.
+
+Os dois formatos incluem `columns`, `count`, `dropped` e `rows`. O armazenamento
+numérico é pré-alocado para evitar uma lista crescente de objetos de diagnóstico
+em cada transação. Ainda há custo de instrumentação; os dois ensaios devem usar
+a mesma versão. `dropped > 0` indica cobertura incompleta e deve ser considerado
+na análise. Os arquivos são exportados ao encerrar; aguarde a saída do processo.
+
+Envie as pastas completas para cruzarmos falhas, transações I²C, coleta de lixo e
+publicações dos lotes. As ações continuam descartadas, os motores não são
+inicializados e a proteção do runtime não foi alterada.
