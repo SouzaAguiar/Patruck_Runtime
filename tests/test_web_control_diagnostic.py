@@ -47,8 +47,10 @@ class FakeImu:
         self.stopped = True
 
 
+@pytest.mark.parametrize("gc_policy", ["default", "defer"])
 @pytest.mark.parametrize("mode", ["web", "imu", "onnx", "telemetry"])
-def test_modes_record_and_continue_after_fault(tmp_path, monkeypatch, mode):
+def test_modes_record_and_continue_after_fault(tmp_path, monkeypatch, mode, gc_policy):
+    monkeypatch.setattr(diag, "memory_snapshot", lambda: (100*1024**2, 200*1024**2))
     monkeypatch.setitem(sys.modules, "mini_bdx_runtime.web_controller", SimpleNamespace(WebController=FakeWeb))
     monkeypatch.chdir(tmp_path)
     (tmp_path/"imu_calib_data.pkl").write_bytes(b"unused fake calibration")
@@ -69,7 +71,9 @@ def test_modes_record_and_continue_after_fault(tmp_path, monkeypatch, mode):
         SessionOptions=SimpleNamespace, InferenceSession=Session))
     output = tmp_path/"output"
     result = diag.main(["--mode", mode, "--duration", "1", "--max-age-ms", "10000", "--output", str(output),
-                        "--config", str(tmp_path/"config.json"), "--onnx-model", str(tmp_path/"fake.onnx")])
+                        "--config", str(tmp_path/"config.json"), "--onnx-model", str(tmp_path/"fake.onnx"),
+                        "--gc-policy", gc_policy, "--writer-yield-ms",
+                        "1" if mode == "telemetry" and gc_policy == "defer" else "0"])
     folder = next(output.iterdir())
     rows = [json.loads(l) for f in sorted(folder.glob("chunk-*.jsonl")) for l in f.read_text().splitlines()]
     cycles = [r for r in rows if r["kind"] == "diagnostic_cycle"]
@@ -153,3 +157,74 @@ def test_gc_observer_is_removed_after_setup_error(tmp_path, monkeypatch):
     before = list(gc.callbacks)
     assert diag.main(["--mode", "web", "--duration", ".1", "--output", str(tmp_path)]) == 2
     assert gc.callbacks == before
+
+
+def test_defer_restores_gc_after_interrupt_and_saves_memory(tmp_path, monkeypatch):
+    import gc
+    class InterruptedWeb(FakeWeb):
+        def get_last_command(self):
+            assert not gc.isenabled()
+            raise KeyboardInterrupt
+    monkeypatch.setitem(sys.modules, "mini_bdx_runtime.web_controller", SimpleNamespace(WebController=InterruptedWeb))
+    monkeypatch.setattr(diag, "memory_snapshot", lambda: (100*1024**2, 200*1024**2))
+    before, callbacks = gc.isenabled(), list(gc.callbacks)
+    result = diag.main(["--mode", "web", "--gc-policy", "defer", "--duration", ".1", "--output", str(tmp_path)])
+    assert result == 130 and gc.isenabled() == before and gc.callbacks == callbacks
+    folder = next(tmp_path.iterdir())
+    assert json.loads((folder/"memory_timing.json").read_text())[0]["rss_bytes"] == 100*1024**2
+
+
+def test_memory_growth_aborts_and_preserves_preexisting_gc_state(monkeypatch):
+    import gc
+    before = gc.isenabled()
+    try:
+        gc.disable()
+        monkeypatch.setattr(diag, "memory_snapshot", lambda: (100*1024**2, 200*1024**2))
+        guard = diag.MeasurementGuard('defer', 64, 64)
+        guard.start()
+        monkeypatch.setattr(diag, "memory_snapshot", lambda: (165*1024**2, 200*1024**2))
+        with pytest.raises(RuntimeError, match='Memory guard'):
+            guard.check(force=True)
+        guard.restore()
+        assert not gc.isenabled()
+    finally:
+        if before:gc.enable()
+
+
+def test_defer_requires_memory_measurements(monkeypatch):
+    import gc
+    before = gc.isenabled()
+    monkeypatch.setattr(diag, "memory_snapshot", lambda: (None, None))
+    guard = diag.MeasurementGuard('defer', 64, 64)
+    with pytest.raises(RuntimeError, match='requires Linux'):
+        guard.start()
+    guard.restore()
+    assert gc.isenabled() == before
+
+
+def test_defer_duration_and_yield_validation():
+    with pytest.raises(SystemExit):
+        diag.main(['--gc-policy', 'defer', '--duration', '121'])
+    with pytest.raises(SystemExit):
+        diag.main(['--mode', 'onnx', '--writer-yield-ms', '1'])
+
+
+def test_stop_failure_restores_gc_and_closes_recording(tmp_path, monkeypatch):
+    import gc
+    class BrokenStop(FakeImu):
+        def stop(self):
+            raise RuntimeError('stop failure')
+    monkeypatch.setitem(sys.modules, "mini_bdx_runtime.web_controller", SimpleNamespace(WebController=FakeWeb))
+    monkeypatch.setattr(diag, 'make_imu', lambda *args: BrokenStop())
+    monkeypatch.setattr(diag, 'memory_snapshot', lambda: (100*1024**2, 200*1024**2))
+    monkeypatch.chdir(tmp_path)
+    (tmp_path/'imu_calib_data.pkl').write_bytes(b'fake')
+    (tmp_path/'config.json').write_text('{}')
+    before, callbacks = gc.isenabled(), list(gc.callbacks)
+    result = diag.main(['--mode', 'imu', '--gc-policy', 'defer', '--duration', '.1',
+                        '--config', str(tmp_path/'config.json'), '--output', str(tmp_path/'output')])
+    assert result == 2 and gc.isenabled() == before and gc.callbacks == callbacks
+    folder = next((tmp_path/'output').iterdir())
+    status = json.loads((folder/'status.json').read_text())
+    assert status['state'] == 'closed' and status['close_reason'] == 'error'
+    assert status['dropped_records'] == status['unwritten_records'] == 0

@@ -6,12 +6,70 @@ import copy
 import gc
 import json
 import math
+import os
 from pathlib import Path
 import sys
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "mini_bdx_runtime"))
+
+
+def memory_snapshot():
+    """Linux current RSS and system available memory; never guess unavailable data."""
+    rss = available = None
+    try:
+        for line in Path('/proc/self/status').read_text().splitlines():
+            if line.startswith('VmRSS:'):
+                rss = int(line.split()[1])*1024
+        for line in Path('/proc/meminfo').read_text().splitlines():
+            if line.startswith('MemAvailable:'):
+                available = int(line.split()[1])*1024
+    except OSError:
+        pass
+    return rss, available
+
+
+class MeasurementGuard:
+    """Bounded experiment only: restore the original GC state on every exit."""
+    def __init__(self, policy, max_growth_mb, min_available_mb):
+        self.policy = policy
+        self.max_growth = int(max_growth_mb*1024**2)
+        self.min_available = int(min_available_mb*1024**2)
+        self.enabled = gc.isenabled()
+        self.baseline = None
+        self.samples = []
+        self.next_check = 0
+
+    def start(self):
+        if self.policy == 'defer':
+            # Before the timed measurement. Reader startup is revalidated afterward.
+            gc.collect()
+        self.check(force=True)
+        if self.policy == 'defer':
+            gc.disable()
+
+    def check(self, force=False):
+        now = time.monotonic_ns()
+        if not force and now < self.next_check:
+            return
+        self.next_check = now+1_000_000_000
+        rss, available = memory_snapshot()
+        self.samples.append(dict(monotonic_ns=now, rss_bytes=rss, available_bytes=available))
+        if rss is None or available is None:
+            if self.policy == 'defer':
+                raise RuntimeError('GC defer requires Linux /proc memory measurements')
+            return
+        if self.baseline is None:
+            self.baseline = rss
+        if available < self.min_available or rss-self.baseline > self.max_growth:
+            raise RuntimeError('Memory guard stopped diagnostic: inspect memory_timing.json')
+
+    def restore(self):
+        if self.enabled:
+            gc.enable()
+        else:
+            gc.disable()
 
 
 class TimingTrace:
@@ -122,6 +180,11 @@ def main(argv=None):
     parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--token", default="duck-test")
     parser.add_argument("--camera", action="store_true")
+    parser.add_argument('--gc-policy', choices=('default', 'defer'), default='default')
+    parser.add_argument('--max-rss-growth-mb', type=float, default=64)
+    parser.add_argument('--min-available-mb', type=float, default=64)
+    parser.add_argument('--writer-yield-ms', type=float, default=0,
+                        help='Diagnostic only: yield between serialized rows; compare 0 and 1')
     parser.add_argument("--duration", type=float, default=120)
     parser.add_argument("--i2c-bus", type=int, default=8)
     parser.add_argument("--max-age-ms", type=float, default=50)
@@ -139,6 +202,14 @@ def main(argv=None):
         parser.error("Use a positive age and nonnegative I2C bus")
     if args.onnx_threads < 0:
         parser.error("onnx-threads must be nonnegative")
+    if any(not math.isfinite(v) or v <= 0 for v in (args.max_rss_growth_mb, args.min_available_mb)):
+        parser.error('Memory limits must be positive and finite')
+    if not math.isfinite(args.writer_yield_ms) or not 0 <= args.writer_yield_ms <= 2:
+        parser.error('writer-yield-ms must be between 0 and 2')
+    if args.gc_policy == 'defer' and args.duration > 120:
+        parser.error('GC defer experiment is limited to 120 seconds')
+    if args.writer_yield_ms and args.mode != 'telemetry':
+        parser.error('writer-yield-ms is only meaningful in telemetry mode')
     use_imu = args.mode != "web"
     use_onnx = args.mode in ("onnx", "telemetry")
     if use_onnx and (args.onnx_model is None or not args.onnx_model.is_file()):
@@ -161,6 +232,7 @@ def main(argv=None):
     writer_events = deque(maxlen=2000)
     transaction_trace = TimingTrace(int(args.duration*250)+1000, 4)
     gc_trace = TimingTrace(10000, 5)
+    memory_guard = MeasurementGuard(args.gc_policy, args.max_rss_growth_mb, args.min_available_mb)
     def observe_gc(phase, info):
         gc_trace.add(time.monotonic_ns(), int(phase == 'stop'), info.get('generation', -1),
                      info.get('collected', 0), info.get('uncollectable', 0))
@@ -169,7 +241,23 @@ def main(argv=None):
         def _publish(self, rows):
             start = time.monotonic_ns()
             try:
-                super()._publish(rows)
+                if not args.writer_yield_ms:
+                    super()._publish(rows)
+                else:
+                    # Same publication protocol, with an explicit scheduler yield per row.
+                    path = self.folder / f'chunk-{self.chunks:06d}.jsonl'
+                    temporary = path.with_suffix('.jsonl.tmp')
+                    with temporary.open('w', encoding='utf-8') as stream:
+                        for row in rows:
+                            stream.write(json.dumps(row, ensure_ascii=False, allow_nan=False,
+                                                    separators=(',', ':'))+'\n')
+                            time.sleep(args.writer_yield_ms/1000)
+                        stream.flush()
+                        os.fsync(stream.fileno())
+                    os.replace(temporary, path)
+                    self.written += len(rows)
+                    self.chunks += 1
+                    self._status('recording')
             finally:
                 writer_events.append(dict(start_monotonic_ns=start, end_monotonic_ns=time.monotonic_ns(),
                                           records=len(rows)))
@@ -185,8 +273,10 @@ def main(argv=None):
                     payload_profile_sha256=file_sha256(args.payload_profile) if profile else None,
                     payload_source_session=profile.get('source_session') if profile else None,
                     payload_reference_cycle_bytes=profile.get('source_cycle_compact_bytes') if profile else None,
-                    instrumentation='preallocated I2C transaction and GC event traces; GC remains enabled as configured',
+                    instrumentation='preallocated I2C/GC traces; bounded GC policy and RSS sampling',
                     gc_enabled=gc.isenabled(), gc_thresholds=gc.get_threshold(),
+                    gc_policy=args.gc_policy, max_rss_growth_mb=args.max_rss_growth_mb,
+                    min_available_mb=args.min_available_mb, writer_yield_ms=args.writer_yield_ms,
                     source_sha256={n:file_sha256(ROOT/"mini_bdx_runtime"/"mini_bdx_runtime"/n)
                                    for n in ("raw_imu.py", "imu_safety.py", "web_controller.py", "telemetry.py")})
     recorder = TimedRecorder(args.output, label="web-diagnostic-"+args.mode, metadata=metadata)
@@ -214,7 +304,11 @@ def main(argv=None):
             imu = make_imu(args.i2c_bus, args.max_age_ms/1000, config, events, transaction_trace)
             imu.wait_ready()
         controller = WebController(command_freq=20, port=args.port, token=args.token, camera=args.camera)
+        memory_guard.start()
+        if imu is not None:
+            imu.wait_ready()
         print("DIAGNOSTICO SEM MOTORES: INICIAR/PARAR sao registrados; a coleta continua apos falhas.")
+        print(f'GC={args.gc_policy}; writer_yield_ms={args.writer_yield_ms}; duration={args.duration}s')
         start = previous = time.monotonic_ns()
         deadline = start + int(args.duration*1e9)
         while time.monotonic_ns() < deadline:
@@ -258,6 +352,7 @@ def main(argv=None):
                 buffered.append(row)
             if recorder.error or recorder.dropped:
                 raise RuntimeError("Telemetry writer failure or dropped records")
+            memory_guard.check()
             time.sleep(max(0, .02-(time.monotonic_ns()-tick)/1e9))
     except KeyboardInterrupt:
         reason, exit_code = "interrupted", 130
@@ -267,9 +362,16 @@ def main(argv=None):
         print(f"Diagnostic failed: {exc}", file=sys.stderr)
     finally:
         measurement_end_ns = time.monotonic_ns()
-        if imu is not None:
-            imu.stop()
-        gc.callbacks.remove(observe_gc)
+        try:
+            if imu is not None:
+                imu.stop()
+        except Exception as exc:
+            reason, exit_code = 'error', 2
+            recorder.record('diagnostic_error', message=f'IMU stop: {type(exc).__name__}: {exc}')
+        finally:
+            # Also restore GC if stopping a device unexpectedly raises.
+            memory_guard.restore()
+            gc.callbacks.remove(observe_gc)
         # Non-telemetry stages write only after measurements stop; same JSONL format.
         for row in buffered:
             while recorder.queue.full() and not recorder.error:
@@ -284,6 +386,7 @@ def main(argv=None):
                         producer_event_buffer_full=len(events)==events.maxlen)
         recorder.close(reason)
         (recorder.folder/"writer_timing.json").write_text(json.dumps(list(writer_events), indent=2), encoding="utf-8")
+        (recorder.folder/'memory_timing.json').write_text(json.dumps(memory_guard.samples, indent=2), encoding='utf-8')
         for name, trace, columns in (
             ('i2c_timing', transaction_trace, ['start_ns', 'end_ns', 'register', 'failed']),
             ('gc_timing', gc_trace, ['time_ns', 'stop', 'generation', 'collected', 'uncollectable']),

@@ -141,8 +141,9 @@ perfeita de todas as threads do runtime. Os resultados antigos foram preservados
 Além dos arquivos anteriores, cada sessão gera:
 
 - `gc_timing.json`: linhas com timestamp monotônico, fase (`stop=0` início,
-  `stop=1` fim), geração, objetos coletados e não coletáveis. O coletor não é
-  desativado nem tem seus limiares alterados. O rastreamento cobre inicialização
+  `stop=1` fim), geração, objetos coletados e não coletáveis. No modo padrão, o coletor não é
+  desativado nem tem seus limiares alterados; a opção experimental `defer` é
+  descrita abaixo. O rastreamento cobre inicialização
   e medição até o encerramento do leitor; exclui a exportação posterior.
 - `i2c_timing.json`: início/fim de cada `write_then_readinto` do leitor, endereço
   do registrador e indicador de exceção. Não faz leituras extras, não muda bytes
@@ -159,3 +160,73 @@ na análise. Os arquivos são exportados ao encerrar; aguarde a saída do proces
 Envie as pastas completas para cruzarmos falhas, transações I²C, coleta de lixo e
 publicações dos lotes. As ações continuam descartadas, os motores não são
 inicializados e a proteção do runtime não foi alterada.
+
+
+## Correções experimentais: comparação A/B/C
+
+Esta etapa testa mudanças no diagnóstico **sem motores**. Elas ainda não foram
+aplicadas ao runtime de caminhada. O limite de idade continua em 50 ms.
+
+A nova versão aparece em `--help` com `--gc-policy` e `--writer-yield-ms`.
+Copie novamente script e arquivo de perfil antes do ensaio. Use o mesmo student,
+a mesma posição do robô, câmera desligada e a mesma sequência de comandos.
+Substitua `/caminho/real/student.onnx` pelo caminho que você já utiliza.
+
+**A — Referência com GC e gravador habituais:**
+
+```bash
+python web_control_test.py --mode telemetry --duration 120 --onnx-model /caminho/real/student.onnx --gc-policy default --writer-yield-ms 0
+```
+
+**B — Adiar GC durante a medição:**
+
+```bash
+python web_control_test.py --mode telemetry --duration 120 --onnx-model /caminho/real/student.onnx --gc-policy defer --writer-yield-ms 0
+```
+
+**C — Adiar GC e ceder tempo no gravador entre linhas:**
+
+```bash
+python web_control_test.py --mode telemetry --duration 120 --onnx-model /caminho/real/student.onnx --gc-policy defer --writer-yield-ms 1
+```
+
+Faça A, B e C; depois, se possível, repita na ordem C, B, A para verificar
+repetibilidade. Não execute testes simultaneamente. O programa imprime as opções
+ativas no início e as registra nos metadados. Aguarde o encerramento completo
+antes de começar o próximo. Comandos continuam sendo recebidos e a coleta não
+pausa por amostra antiga, pois nenhuma ação é enviada aos motores.
+
+Como funciona `defer`: após inicializar os componentes, faz uma coleta explícita
+antes da medição, verifica memória e suspende a coleta automática somente no
+intervalo do teste. Confirma novamente a prontidão da IMU antes de iniciar a
+medição. Ao encerrar a aquisição, restaura o estado anterior do GC, inclusive em
+Ctrl+C ou erro. Essa opção recusa duração acima de 120 segundos e exige as medidas
+Linux de `/proc`. Não é uma opção para deixar um runtime de produção indefinidamente
+sem coleta de lixo.
+
+O script mede RSS do próprio processo e `MemAvailable` do sistema aproximadamente
+uma vez por segundo em **todos** os modos. Os limites padrão encerram a coleta
+se o RSS crescer mais de 64 MiB em relação ao início ou se houver menos de 64 MiB
+disponíveis no sistema. O encerramento é registrado como erro e preserva os dados
+já obtidos. A verificação é periódica, não uma reserva ou um limite imposto pelo
+kernel; um pico rápido ainda pode ocorrer entre verificações. Não aumente os
+limites apenas para passar no teste sem analisar a memória.
+
+`memory_timing.json` contém os timestamps, RSS e memória disponível. O arquivo
+permite observar o custo de adiar o GC. O campo `gc_enabled` do metadata descreve
+o estado inicial; `gc_policy` informa a política durante o ensaio. Eventos de GC
+na inicialização são esperados no modo `defer`; devem ser separados do intervalo
+de ciclos medidos.
+
+`--writer-yield-ms 1` insere uma espera de 1 ms após cada linha serializada na
+thread do gravador. Mantém JSON, publicação atômica, fsync, fila limitada e
+contadores de perda. Testa uma forma de reduzir a concorrência de CPU com a IMU;
+não garante eliminar atrasos e pode reduzir a capacidade de escrita. Só vale no
+modo `telemetry` e não altera o gravador utilizado na caminhada.
+
+Para interpretar: comparar rejeições e picos de GC de A para B; comparar atrasos
+residuais, fila/perdas e escrita de B para C; conferir a trajetória de memória em
+todos. Critério para avançar: ensaios completos e repetidos sem rejeições, sem
+perdas, sem acionamento do limite de memória e com aquisições recentes. Um único
+teste limpo não valida a caminhada. Envie as pastas completas, incluindo
+`memory_timing.json`, `gc_timing.json` e `i2c_timing.json`.
