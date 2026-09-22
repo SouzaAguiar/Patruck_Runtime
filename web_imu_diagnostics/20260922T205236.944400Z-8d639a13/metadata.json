@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "label": "web-diagnostic-telemetry",
+  "started_utc": "20260922T205236.944400Z",
+  "clock_anchor": {
+    "unix_ns": 1790110356945451757,
+    "monotonic_ns": 86523784711
+  },
+  "python": "3.11.2 (main, May 12 2026, 05:17:27) [GCC 12.2.0]",
+  "platform": "Linux-6.12.96+rpt-rpi-v8-aarch64-with-glibc2.36",
+  "flush_seconds": 1.0,
+  "queue_capacity_records": 512,
+  "nonfinite_values": "null",
+  "settings": {
+    "mode": "telemetry",
+    "i2c_bus": 8,
+    "max_age_ms": 50,
+    "camera": false,
+    "frequency_hz": 50,
+    "onnx_threads": 0,
+    "motors_controlled_by_script": false,
+    "observations": "synthetic joints/history; real IMU and web commands when enabled",
+    "model_sha256": "48f6a91a5540650dd43317aca4f4c37bc3f1b98780a7a232ab73aa810dc15a52",
+    "config_sha256": "8c6eb21bba72062e8f954dfe7a27d79ff5be98d11da3059ab64de6c218a11bfd",
+    "calibration_sha256": "b524772f4a82c02c5e03fc9c445d206348ad7a5e1c8947c38fe1dfd0a3533623",
+    "script_sha256": "c0690049e155a784c13e45c66f743a393f433947db2a5b0930b2a3e3a6e01808",
+    "source_sha256": {
+      "raw_imu.py": "3145d48e066e17cefb7f443f211180882b3210a5aea27b30e32c9e6a58350075",
+      "imu_safety.py": "50772c76a7069367130f1f88687b3ca7bda8008324b34542ac9a414051c86504",
+      "web_controller.py": "68738b1d09773d06ee97434390528b086973ddfe015d56db4fe96750bdae4ce9",
+      "telemetry.py": "ccbf15c5ef7f351ff184570908f03dd5946d578ddc0509caa09f9303d0d9d05d"
+    }
+  }
+}
