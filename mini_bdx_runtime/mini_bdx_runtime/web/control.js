@@ -29,7 +29,7 @@
       let message;
       try { message=JSON.parse(event.data); } catch { return; }
       if(message.type!=='runtime_status')return;
-      const fault=Boolean(message.imu_fault);
+      const fault=Boolean(message.imu_fault||message.runtime_fault);
       if(fault&&!imuFault){delete state.paused;zeroMotion();}
       imuFault=fault;
       paused=Boolean(message.paused);
@@ -41,7 +41,12 @@
       notice.textContent=fault?(message.fault_acknowledged
         ?'IMU: centralize os controles. INICIAR só retoma com leituras recentes.'
         :'Pausa por falha da IMU. Apoie o robô e pressione PARAR antes de retomar.'):'';
-      setStatus(true,fault?'Pausado pela IMU':(paused?'Pausado':'Em execução'));
+      if(message.runtime_fault){
+        notice.textContent=message.runtime_fault+(message.fault_acknowledged
+          ?' Centralize os controles e pressione INICIAR.'
+          :' Apoie o robô e pressione PARAR para reconhecer.');
+      }
+      setStatus(true,fault?(message.runtime_fault?'Pausado pelo runtime':'Pausado pela IMU'):(paused?'Pausado':'Em execução'));
     };
     socket.onclose=()=>{clearInterval(timer);zeroMotion();setStatus(false,'Reconectando…');setTimeout(connect,reconnectDelay);reconnectDelay=Math.min(5000,reconnectDelay*1.6)};
     socket.onerror=()=>socket.close();

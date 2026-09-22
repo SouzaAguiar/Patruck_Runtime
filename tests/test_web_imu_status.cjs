@@ -43,4 +43,10 @@ test('IMU fault requires acknowledgement and reflects server pause state', () =>
   receive({paused:false,imu_fault:null});
   assert.equal(element('#pause').textContent,'PAUSAR');
   assert.equal(element('#imuFault').textContent,'');
+  receive({paused:true,imu_fault:null,runtime_fault:'Limite de 30 s atingido',fault_acknowledged:false});
+  assert.equal(element('#pause').disabled,true);
+  assert.match(element('#imuFault').textContent,/30 s/);
+  assert.match(element('#imuFault').textContent,/PARAR/);
+  receive({paused:true,runtime_fault:'Limite de 30 s atingido',fault_acknowledged:true});
+  assert.equal(element('#pause').disabled,false);
 });

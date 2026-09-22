@@ -47,9 +47,12 @@ def atomic_json(path, value):
 
 
 class TelemetryRecorder:
-    def __init__(self, root, metadata=None, label='test', flush_seconds=1.0, queue_size=512):
+    def __init__(self, root, metadata=None, label='test', flush_seconds=1.0, queue_size=512, writer_yield_ms=0):
         if flush_seconds <= 0 or queue_size < 1:
             raise ValueError('flush_seconds and queue_size must be positive')
+        if not math.isfinite(writer_yield_ms) or not 0 <= writer_yield_ms <= 2:
+            raise ValueError('writer_yield_ms must be in [0, 2]')
+        self.writer_yield_s = writer_yield_ms/1000
         stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S.%fZ')
         self.folder = Path(root) / (stamp + '-' + uuid4().hex[:8])
         self.folder.mkdir(parents=True, exist_ok=False)
@@ -65,6 +68,7 @@ class TelemetryRecorder:
             'clock_anchor': {'unix_ns': time.time_ns(), 'monotonic_ns': time.monotonic_ns()},
             'python': sys.version, 'platform': platform.platform(),
             'flush_seconds': flush_seconds, 'queue_capacity_records': queue_size,
+            'writer_yield_ms': writer_yield_ms,
             'nonfinite_values': 'null', 'settings': metadata or {},
         })
         self._status('recording')
@@ -105,6 +109,8 @@ class TelemetryRecorder:
         with temporary.open('w', encoding='utf-8') as stream:
             for row in rows:
                 stream.write(json.dumps(row, ensure_ascii=False, allow_nan=False, separators=(',', ':')) + '\n')
+                if self.writer_yield_s:
+                    time.sleep(self.writer_yield_s)
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, path)

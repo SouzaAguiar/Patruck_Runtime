@@ -9,6 +9,7 @@ from mini_bdx_runtime.onnx_infer import OnnxInfer
 
 from mini_bdx_runtime.raw_imu import Imu
 from mini_bdx_runtime.imu_safety import ImuDataError, check_sample
+from mini_bdx_runtime.runtime_budget import RuntimeBudget, RuntimeBudgetError
 from mini_bdx_runtime.poly_reference_motion import PolyReferenceMotion
 from mini_bdx_runtime.feet_contacts import FeetContacts
 from mini_bdx_runtime.eyes import Eyes
@@ -51,8 +52,11 @@ class RLWalk:
         imu_i2c_bus=8,
         imu_max_age_ms=50,
         start_paused=None,
+        runtime_budget=None,
     ):
 
+        self.runtime_budget = runtime_budget
+        self.runtime_fault = None
         self.telemetry = telemetry
         self.telemetry_observation = None
         self.imu_fault = None
@@ -121,7 +125,7 @@ class RLWalk:
 
         self.last_commands = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
-        self.paused = self.duck_config.start_paused if start_paused is None else start_paused
+        self.paused = True if runtime_budget is not None else (self.duck_config.start_paused if start_paused is None else start_paused)
 
         self.command_freq = 20  # hz
         self.controller = None
@@ -271,6 +275,8 @@ class RLWalk:
     def start(self):
         # Constructor/controller setup can take seconds: validate again before
         # any motor configuration or initial-pose command.
+        if self.runtime_budget is not None:
+            self.runtime_budget.preflight()
         self.imu.wait_ready()
         kps = [self.pid[0]] * 14
         kds = [self.pid[2]] * 14
@@ -288,6 +294,7 @@ class RLWalk:
         if self.controller is not None and hasattr(self.controller, 'set_runtime_status'):
             self.controller.set_runtime_status(
                 paused=self.paused, imu_fault=self.imu_fault,
+                runtime_fault=self.runtime_fault,
                 fault_acknowledged=self.imu_fault_acknowledged,
             )
 
@@ -295,29 +302,69 @@ class RLWalk:
         self.imu_fault = str(error)
         self.imu_fault_acknowledged = False
         self.paused = True
+        if self.runtime_budget is not None:
+            self.runtime_budget.pause()
         print('PAUSA IMU:', self.imu_fault, flush=True)
         if self.telemetry is not None:
             self.telemetry.record('imu_fault', message=self.imu_fault,
                                   response='pause_policy_hold_last_target')
         self._publish_control_status()
 
+    def _pause_for_runtime(self, error):
+        self.runtime_fault = str(error)
+        self.imu_fault_acknowledged = False
+        self.paused = True
+        if self.runtime_budget is not None:
+            self.runtime_budget.pause()
+        if self.telemetry is not None:
+            self.telemetry.record('runtime_guard_pause', message=self.runtime_fault,
+                                  response='pause_policy_hold_last_target')
+        print('PAUSA RUNTIME:', self.runtime_fault, flush=True)
+        self._publish_control_status()
+
+    def _check_runtime_budget(self):
+        if self.runtime_budget is None:
+            return True
+        try:
+            self.runtime_budget.check()
+            return True
+        except RuntimeBudgetError as exc:
+            self._pause_for_runtime(exc)
+            return False
+
     def _request_pause(self, desired):
         if desired:
             self.paused = True
-            if self.imu_fault:
+            if self.runtime_budget is not None:
+                self.runtime_budget.pause()
+            if self.imu_fault or self.runtime_fault:
                 self.imu_fault_acknowledged = True
         else:
-            if self.imu_fault and (not self.imu_fault_acknowledged or
-                                   np.any(np.abs(self.last_commands) > 1e-6)):
-                return  # Acknowledge with PARAR, center controls, then INICIAR.
+            if not self.paused:
+                return
+            if (self.imu_fault or self.runtime_fault) and not self.imu_fault_acknowledged:
+                return
+            if (self.runtime_budget is not None or self.imu_fault) and np.any(np.abs(self.last_commands) > 1e-6):
+                return
             try:
-                self.imu.wait_ready(timeout_s=0)
+                if self.runtime_budget is not None:
+                    self.runtime_budget.maintain()
+                # GC maintenance can age IMU data; require fresh readings afterward.
+                self.imu.wait_ready(timeout_s=3 if self.runtime_budget is not None else 0)
+                if self.runtime_budget is not None:
+                    self.runtime_budget.begin()
+            except RuntimeBudgetError as exc:
+                self._pause_for_runtime(exc)
+                return
             except ImuDataError as exc:
                 self._pause_for_imu(exc)
                 return
             if self.imu_fault and self.telemetry is not None:
                 self.telemetry.record('imu_fault_cleared', response='explicit_resume')
+            if self.runtime_fault and self.telemetry is not None:
+                self.telemetry.record('runtime_guard_cleared', response='explicit_resume')
             self.imu_fault = None
+            self.runtime_fault = None
             self.imu_fault_acknowledged = False
             self.paused = False
         self._publish_control_status()
@@ -384,13 +431,13 @@ class RLWalk:
                         if self.duck_config.speaker:
                             self.sounds.play_random_sound()
 
-                    if self.duck_config.antennas and not self.imu_fault:
+                    if self.duck_config.antennas and not (self.imu_fault or self.runtime_fault):
                         self.antennas.set_position_left(right_trigger)
                         self.antennas.set_position_right(left_trigger)
 
                     if self.buttons.A.triggered:
                         desired = not self.paused
-                        if self.imu_fault and not self.imu_fault_acknowledged:
+                        if (self.imu_fault or self.runtime_fault) and not self.imu_fault_acknowledged:
                             desired = True  # First A acknowledges; next A requests resume.
                         self._request_pause(desired)
                         if self.paused:
@@ -403,12 +450,20 @@ class RLWalk:
                 previous_paused = self.paused
                 self._publish_control_status()
                 if self.paused:
+                    if self.runtime_budget is not None and self.runtime_budget.needs_maintenance:
+                        try:
+                            self.runtime_budget.maintain()
+                        except RuntimeBudgetError as exc:
+                            if self.runtime_fault != str(exc):
+                                self._pause_for_runtime(exc)
                     if self.telemetry is not None:
                         self.telemetry.record('paused', commands=self.last_commands,
                                               command_source=getattr(self.controller, 'last_command_telemetry', None))
                     time.sleep(0.1)
                     continue
 
+                if not self._check_runtime_budget():
+                    continue
                 try:
                     obs = self.get_obs()
                 except ImuDataError as exc:
@@ -468,6 +523,10 @@ class RLWalk:
                     candidate_targets, list(self.hwi.joints.keys())
                 )
 
+                if not self._check_runtime_budget():
+                    if self.action_filter is not None:
+                        self.action_filter.current_action, self.action_filter.last_action = filter_state
+                    continue
                 write_start_ns = time.monotonic_ns()
                 try:
                     check_sample(self.observation_imu, self.imu_max_age_s, now_ns=write_start_ns)
@@ -529,7 +588,11 @@ class RLWalk:
             if self.telemetry is not None:
                 self.telemetry.record('control_interrupted', cycle=i)
         finally:
-            self.imu.stop()
+            try:
+                self.imu.stop()
+            finally:
+                if self.runtime_budget is not None:
+                    self.runtime_budget.close()
             self.paused = True
             self._publish_control_status()
             if self.duck_config.antennas:
@@ -606,13 +669,26 @@ if __name__ == "__main__":
     parser.add_argument('--start-paused', action='store_true', default=None,
                         help='Wait for an explicit start command after initial pose setup')
 
+    parser.add_argument('--runtime-gc', choices=('bounded', 'default'), default='bounded',
+                        help='Bounded active windows with GC during pauses (default); default restores legacy GC')
+    parser.add_argument('--active-window-s', type=float, default=30,
+                        help='Maximum continuous active time, in (0,120]; default 30 seconds')
+    parser.add_argument('--max-rss-growth-mb', type=float, default=64)
+    parser.add_argument('--min-available-mb', type=float, default=64)
+    parser.add_argument('--telemetry-writer-yield-ms', type=float, default=1)
     args = parser.parse_args()
+    # Validate resources/settings before constructing the hardware runtime.
+    budget = (RuntimeBudget(args.active_window_s, args.max_rss_growth_mb, args.min_available_mb)
+              if args.runtime_gc == 'bounded' else None)
     pid = [args.p, args.i, args.d]
 
     print("Done parsing args")
     recorder = nullcontext(None)
     if args.telemetry_dir:
-        recorder = TelemetryRecorder(args.telemetry_dir, label=args.telemetry_label, metadata={
+        recorder = TelemetryRecorder(args.telemetry_dir, label=args.telemetry_label,
+                                     writer_yield_ms=args.telemetry_writer_yield_ms, metadata={
+            'runtime_gc': args.runtime_gc, 'active_window_s': args.active_window_s,
+            'max_rss_growth_mb': args.max_rss_growth_mb, 'min_available_mb': args.min_available_mb,
             'model_name': Path(args.onnx_model_path).name,
             'model_sha256': file_sha256(args.onnx_model_path),
             'runtime_sha256': file_sha256(__file__),
@@ -625,10 +701,12 @@ if __name__ == "__main__":
             'imu_i2c_bus': args.imu_i2c_bus, 'imu_max_age_ms': args.imu_max_age_ms,
             'source_sha256': {
                 name: file_sha256(Path(__file__).resolve().parents[1]/'mini_bdx_runtime'/'mini_bdx_runtime'/name)
-                for name in ('raw_imu.py', 'imu_safety.py', 'web_controller.py', 'telemetry.py', 'rustypot_position_hwi.py')
+                for name in ('raw_imu.py', 'imu_safety.py', 'web_controller.py', 'telemetry.py', 'runtime_budget.py', 'rustypot_position_hwi.py')
             },
         })
     with recorder as telemetry:
+        if budget is not None:
+            budget.recorder = telemetry
         rl_walk = RLWalk(
             args.onnx_model_path,
             duck_config_path=args.duck_config_path,
@@ -654,6 +732,7 @@ if __name__ == "__main__":
             imu_i2c_bus=args.imu_i2c_bus,
             imu_max_age_ms=args.imu_max_age_ms,
             start_paused=args.start_paused,
+            runtime_budget=budget,
         )
         print("Done instantiating RLWalk")
         rl_walk.run()

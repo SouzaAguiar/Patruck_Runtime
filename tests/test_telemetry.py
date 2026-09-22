@@ -14,6 +14,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'mini_bdx_runtime'))
 from mini_bdx_runtime.telemetry import TelemetryRecorder
+from mini_bdx_runtime.runtime_budget import RuntimeBudgetError
 from mini_bdx_runtime.imu_safety import ImuDataError, check_sample, LatestImuSample
 
 spec = importlib.util.spec_from_file_location('summary', ROOT/'scripts/summarize_telemetry.py')
@@ -97,13 +98,16 @@ def load_walk(source):
     namespace = {'np': np, 'HOME_DIR': '', 'time': SimpleNamespace(
         time=time.time, monotonic_ns=time.monotonic_ns, sleep=lambda seconds: None),
         'make_action_dict': lambda targets, names: dict(zip(names, targets)),
-        'ImuDataError': ImuDataError, 'check_sample': check_sample}
+        'ImuDataError': ImuDataError, 'check_sample': check_sample,
+        'RuntimeBudgetError': RuntimeBudgetError}
     exec(compile(ast.Module(body=[node], type_ignores=[]), '<walk-class-only>', 'exec'), namespace)
     return namespace['RLWalk']
 
 
 def make_walk(cls, telemetry=None, fail_first_read=False):
     walk = cls.__new__(cls)
+    walk.runtime_budget = None
+    walk.runtime_fault = None
     walk.telemetry = telemetry
     walk.telemetry_observation = None
     walk.imu_fault = None

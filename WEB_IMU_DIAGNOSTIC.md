@@ -162,7 +162,7 @@ publicações dos lotes. As ações continuam descartadas, os motores não são
 inicializados e a proteção do runtime não foi alterada.
 
 
-## Correções experimentais: comparação A/B/C
+## git 
 
 Esta etapa testa mudanças no diagnóstico **sem motores**. Elas ainda não foram
 aplicadas ao runtime de caminhada. O limite de idade continua em 50 ms.
