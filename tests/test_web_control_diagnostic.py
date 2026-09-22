@@ -1,0 +1,118 @@
+"""Exercise diagnostics without web servers, I2C, camera or motor imports."""
+import importlib.util
+import json
+from pathlib import Path
+import sys
+import time
+from types import SimpleNamespace
+
+import numpy as np
+import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT/"mini_bdx_runtime"))
+spec = importlib.util.spec_from_file_location("web_diagnostic", ROOT/"scripts/web_control_test.py")
+diag = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(diag)
+from mini_bdx_runtime.imu_safety import LatestImuSample
+
+
+class FakeWeb:
+    def __init__(self, **kwargs):
+        self.last_command_telemetry = dict(command_fresh=True, source="web")
+    def get_last_command(self):
+        return np.array([.1, 0, 0, 0, 0, 0, 0]), None, None, None
+    def consume_desired_paused(self):
+        return True  # Stop request must not stop a motor-free diagnostic.
+
+
+class FakeImu:
+    def __init__(self):
+        self.samples = LatestImuSample(.05)
+        self.calls = 0
+        self.stopped = False
+    def wait_ready(self):
+        pass
+    def get_data(self):
+        self.calls += 1
+        if self.calls == 2:
+            self.samples.fail("injected transient fault")
+            return self.samples.get()
+        now = time.monotonic_ns()
+        self.samples.publish(dict(gyro=[0., 0., 0.], accelero=[0., 0., 9.81],
+                                  sample_start_monotonic_ns=now-1000000,
+                                  sample_end_monotonic_ns=now, sample_index=self.calls))
+        return self.samples.get()
+    def stop(self):
+        self.stopped = True
+
+
+@pytest.mark.parametrize("mode", ["web", "imu", "onnx", "telemetry"])
+def test_modes_record_and_continue_after_fault(tmp_path, monkeypatch, mode):
+    monkeypatch.setitem(sys.modules, "mini_bdx_runtime.web_controller", SimpleNamespace(WebController=FakeWeb))
+    monkeypatch.chdir(tmp_path)
+    (tmp_path/"imu_calib_data.pkl").write_bytes(b"unused fake calibration")
+    (tmp_path/"config.json").write_text("{}")
+    (tmp_path/"fake.onnx").write_bytes(b"fake model")
+    imu = FakeImu()
+    monkeypatch.setattr(diag, "make_imu", lambda *a: imu)
+    calls = []
+    class Session:
+        def __init__(self, *a, **kw):
+            pass
+        def get_inputs(self):
+            return [SimpleNamespace(name="obs", shape=[1,101], type="tensor(float)")]
+        def run(self, _, feed):
+            calls.append(feed["obs"].copy())
+            return [np.zeros((1,14), np.float32)]
+    monkeypatch.setitem(sys.modules, "onnxruntime", SimpleNamespace(
+        SessionOptions=SimpleNamespace, InferenceSession=Session))
+    output = tmp_path/"output"
+    result = diag.main(["--mode", mode, "--duration", ".14", "--output", str(output),
+                        "--config", str(tmp_path/"config.json"), "--onnx-model", str(tmp_path/"fake.onnx")])
+    folder = next(output.iterdir())
+    rows = [json.loads(l) for f in sorted(folder.glob("chunk-*.jsonl")) for l in f.read_text().splitlines()]
+    cycles = [r for r in rows if r["kind"] == "diagnostic_cycle"]
+    assert len(cycles) >= 3
+    assert all(r["desired_paused"] is True for r in cycles)
+    assert result == (0 if mode == "web" else 2)
+    if mode != "web":
+        assert imu.stopped
+        assert cycles[1]["faults"][0]["stage"] == "get_data"
+        assert cycles[2]["faults"] == []
+    if mode in ("onnx", "telemetry"):
+        assert len(calls) == len(cycles)-1
+        assert calls[0][0,6] == np.float32(.1)
+    status = json.loads((folder/"status.json").read_text())
+    assert status["dropped_records"] == 0 and status["unwritten_records"] == 0
+    assert "synthetic_targets" in cycles[0] if mode == "telemetry" else "synthetic_targets" not in cycles[0]
+    assert (folder/"writer_timing.json").is_file()
+
+
+def test_age_rejection_identifies_stage_and_sample():
+    imu = FakeImu()
+    sample = imu.get_data()
+    sample["sample_start_monotonic_ns"] -= 100000000
+    used, fault = diag.inspect_sample(imu, sample, .05, "after_inference")
+    assert used is sample
+    assert fault["stage"] == "after_inference"
+    assert fault["used_sample_index"] == sample["sample_index"]
+
+
+def test_no_sample_yet_does_not_crash():
+    sample, fault = diag.inspect_sample(FakeImuEmpty(), None, .05, "get_data")
+    assert sample is None and fault["latest"] == {}
+
+
+class FakeImuEmpty:
+    def __init__(self):
+        self.samples = LatestImuSample(.05)
+    def get_data(self):
+        return self.samples.get()
+
+
+def test_invalid_duration_and_missing_model_fail_before_imports():
+    with pytest.raises(SystemExit):
+        diag.main(["--duration", "nan"])
+    with pytest.raises(SystemExit):
+        diag.main(["--mode", "onnx"])
