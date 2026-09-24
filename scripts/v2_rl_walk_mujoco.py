@@ -280,6 +280,61 @@ class RLWalk:
 
         return obs
 
+    def _select_imu_for_inference(self, obs):
+        # Joint reads are already complete. Refresh actual sensor values before
+        # inference, never the timestamp of an action computed from older data.
+        reserve_ns = min(10_000_000, int(self.imu_max_age_s * 1e9 / 2))
+        started_ns = time.monotonic_ns()
+        deadline_ns = min(started_ns + 5_000_000,
+                          self.cycle_diagnostics['cycle_start_ns']
+                          + int(1e9 / self.control_freq) - reserve_ns)
+        initial_index = self.observation_imu.get('sample_index')
+        polls = 0
+        self._mark_imu_stage('select_imu_before_inference',
+                             selection_initial_sample_index=initial_index,
+                             selection_start_ns=started_ns,
+                             selection_deadline_ns=deadline_ns,
+                             selection_reserve_ns=reserve_ns)
+        while True:
+            data = self.imu.get_data()  # Cached snapshot; propagate reader errors.
+            self.observation_imu = data
+            now_ns = time.monotonic_ns()
+            check_sample(data, self.imu_max_age_s, now_ns=now_ns)
+            age_ns = now_ns - data['sample_start_monotonic_ns']
+            polls += 1
+            self.cycle_diagnostics.update(selection_polls=polls,
+                selection_end_ns=now_ns, selection_age_ms=age_ns / 1e6,
+                selection_sample_index=data.get('sample_index'))
+            if polls > 1 and now_ns > deadline_ns:
+                raise ImuDataError('IMU: prazo de selecao antes da inferencia excedido')
+            if age_ns <= int(self.imu_max_age_s * 1e9) - reserve_ns:
+                break
+            if now_ns >= deadline_ns:
+                raise ImuDataError('IMU: sem margem temporal antes da inferencia '
+                                   f'({age_ns / 1e6:.1f} ms; reserva {reserve_ns / 1e6:.1f} ms)')
+            time.sleep(min(0.0005, (deadline_ns - now_ns) / 1e9))
+
+        obs = obs.copy()
+        obs[:3] = data['gyro']
+        obs[3:6] = data['accelero']
+        if self.telemetry is not None:
+            sensors = self.telemetry_observation
+            sensors.update(
+                imu_initial_sample_index=initial_index,
+                imu_received_monotonic_ns=now_ns,
+                imu_selected_monotonic_ns=now_ns,
+                imu_selection_wait_ms=(now_ns - started_ns) / 1e6,
+                imu_selection_polls=polls,
+                imu_reserve_ms=reserve_ns / 1e6,
+                imu_sample_start_monotonic_ns=data['sample_start_monotonic_ns'],
+                imu_sample_end_monotonic_ns=data['sample_end_monotonic_ns'],
+                imu_sample_index=data.get('sample_index'),
+                imu_age_ms=(now_ns - data['sample_end_monotonic_ns']) / 1e6,
+                imu_oldest_age_ms=age_ns / 1e6,
+                gyro_rad_s=np.array(data['gyro']).copy(),
+                accelerometer_m_s2=np.array(data['accelero']).copy())
+        return obs
+
     def start(self):
         # Constructor/controller setup can take seconds: validate again before
         # any motor configuration or initial-pose command.
@@ -507,6 +562,14 @@ class RLWalk:
                 if obs is None:
                     time.sleep(1 / self.control_freq)
                     continue
+                try:
+                    obs = self._select_imu_for_inference(obs)
+                except ImuDataError as exc:
+                    self._pause_for_imu(exc)
+                    continue
+                self._mark_imu_stage('runtime_budget_before_inference')
+                if not self._check_runtime_budget():
+                    continue
                 observed_obs = obs.copy()
 
                 if self.save_obs:
@@ -731,6 +794,9 @@ if __name__ == "__main__":
                                      writer_yield_ms=args.telemetry_writer_yield_ms, metadata={
             'runtime_gc': args.runtime_gc, 'active_window_s': args.active_window_s,
             'imu_fault_diagnostics_version': 1,
+            'imu_selection_version': 1,
+            'imu_selection_max_wait_ms': 5,
+            'imu_selection_reserve_ms': min(10, args.imu_max_age_ms / 2),
             'max_rss_growth_mb': args.max_rss_growth_mb, 'min_available_mb': args.min_available_mb,
             'model_name': Path(args.onnx_model_path).name,
             'model_sha256': file_sha256(args.onnx_model_path),

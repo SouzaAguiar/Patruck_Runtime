@@ -81,7 +81,7 @@ def test_recorder_failure_blocks_begin_and_active_control(clock_memory):
     guard.close()
 
 
-@pytest.mark.parametrize('fail_at', [1,2])
+@pytest.mark.parametrize('fail_at', [1,2,3])
 def test_guard_failure_never_sends_motor_target(fail_at):
     cls = load_walk((ROOT/'scripts/v2_rl_walk_mujoco.py').read_text(encoding='utf-8'))
     walk, inputs, writes = make_walk(cls)
@@ -101,7 +101,7 @@ def test_guard_failure_never_sends_motor_target(fail_at):
     cls.run.__globals__['time'].sleep = stop_on_pause
     before = walk.last_action.copy()
     walk.run()
-    assert not writes and len(inputs) == fail_at-1
+    assert not writes and len(inputs) == (1 if fail_at == 3 else 0)
     assert (walk.last_action == before).all() and walk.imitation_i == 0
     assert walk.runtime_fault == 'limit' and guard.closed
 

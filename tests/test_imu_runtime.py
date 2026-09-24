@@ -238,3 +238,88 @@ def test_cached_reader_diagnostics_does_not_read_hardware():
     assert snapshot['error'] == 'injected stale'
     snapshot['latest_sample']['sample_index'] = 90
     assert reader.diagnostic_snapshot()['latest_sample']['sample_index'] == 19
+
+
+@pytest.mark.parametrize('arrives', [True, False])
+def test_selection_waits_bounded_and_uses_new_values_without_committing(arrives):
+    cls, instance, _, writes = walk()
+    clock = [1_000_000_000]
+    cls.run.__globals__['time'].monotonic_ns = lambda: clock[0]
+    cls.run.__globals__['time'].sleep = lambda s: clock.__setitem__(0, clock[0] + round(s * 1e9))
+    old = dict(gyro=[1., 2., 3.], accelero=[0., 0., 9.81], sample_index=10,
+               sample_start_monotonic_ns=959_000_000, sample_end_monotonic_ns=980_000_000)
+    new = dict(old, gyro=[4., 5., 6.], sample_index=11,
+               sample_start_monotonic_ns=980_000_000, sample_end_monotonic_ns=1_001_000_000)
+    instance.observation_imu = old
+    instance.cycle_diagnostics = {'cycle_start_ns': clock[0] - 7_000_000}
+    instance.imu.get_data = lambda: new if arrives and clock[0] >= 1_001_000_000 else old
+    instance.telemetry = object()
+    instance.telemetry_observation = {}
+    obs = np.zeros(101)
+    if arrives:
+        selected = instance._select_imu_for_inference(obs)
+        np.testing.assert_array_equal(selected[:6], new['gyro'] + new['accelero'])
+        np.testing.assert_array_equal(selected[6:], obs[6:])
+        assert instance.telemetry_observation['imu_sample_index'] == 11
+        assert instance.telemetry_observation['imu_selection_wait_ms'] == 1
+    else:
+        with pytest.raises(ImuDataError, match='margem temporal'):
+            instance._select_imu_for_inference(obs)
+        assert clock[0] == 1_003_000_000  # Period minus reserve, stricter than 5 ms.
+    assert not writes and instance.imitation_i == 0
+    np.testing.assert_array_equal(instance.last_action, np.zeros(14))
+    np.testing.assert_array_equal(obs, np.zeros(101))
+
+
+def test_refreshed_sample_is_passed_to_inference_and_telemetry():
+    _, instance, inputs, writes = walk()
+    events = []
+    instance.telemetry = SimpleNamespace(record=lambda kind, **fields: events.append(dict(kind=kind, **fields)))
+    original = instance.imu.get_data
+    calls = [0]
+    def cached():
+        calls[0] += 1
+        data = original()
+        data['gyro'] = [calls[0] / 100., 0., 0.]
+        data['sample_index'] = calls[0]
+        return data
+    instance.imu.get_data = cached
+    instance.run()
+    cycles = [e for e in events if e['kind'] == 'cycle']
+    assert len(writes) == 3
+    assert inputs[0][0] == .02  # Second snapshot selected before inference.
+    assert cycles[0]['sensors']['imu_sample_index'] == 2
+    np.testing.assert_array_equal(cycles[0]['policy_obs'][:6],
+        list(cycles[0]['sensors']['gyro_rad_s']) + list(cycles[0]['sensors']['accelerometer_m_s2']))
+
+
+def test_reader_error_during_selection_pauses_without_inference():
+    _, instance, inputs, writes = walk()
+    original = instance.imu.get_data
+    calls = [0]
+    def cached():
+        calls[0] += 1
+        if calls[0] == 2:
+            raise ImuDataError('reader failed during selection')
+        return original()
+    instance.imu.get_data = cached
+    instance.run()
+    assert instance.paused and 'reader failed' in instance.imu_fault
+    assert not inputs and not writes and instance.imitation_i == 0
+
+
+def test_selection_rejects_fresh_sample_after_wait_deadline():
+    cls, instance, _, writes = walk()
+    clock = [1_000_000_000]
+    cls.run.__globals__['time'].monotonic_ns = lambda: clock[0]
+    cls.run.__globals__['time'].sleep = lambda s: clock.__setitem__(0, clock[0] + 6_000_000)
+    old = dict(gyro=[0., 0., 0.], accelero=[0., 0., 9.81], sample_index=1,
+               sample_start_monotonic_ns=959_000_000, sample_end_monotonic_ns=980_000_000)
+    fresh = dict(old, sample_index=2, sample_start_monotonic_ns=990_000_000,
+                 sample_end_monotonic_ns=1_001_000_000)
+    instance.observation_imu = old
+    instance.cycle_diagnostics = {'cycle_start_ns': clock[0]}
+    instance.imu.get_data = lambda: fresh if clock[0] > 1_000_000_000 else old
+    with pytest.raises(ImuDataError, match='prazo de selecao'):
+        instance._select_imu_for_inference(np.zeros(101))
+    assert not writes and instance.imitation_i == 0
