@@ -1,0 +1,10 @@
+{
+  "state": "recording",
+  "written_records": 9780,
+  "chunks": 185,
+  "attempted_records": 9780,
+  "dropped_records": 0,
+  "unwritten_records": 0,
+  "writer_error": null,
+  "close_reason": null
+}
