@@ -62,6 +62,7 @@ class RLWalk:
         self.imu_fault = None
         self.imu_fault_acknowledged = False
         self.observation_imu = None
+        self.cycle_diagnostics = {}
         self.imu_max_age_s = imu_max_age_ms / 1000
         if not np.isfinite(self.imu_max_age_s) or self.imu_max_age_s <= 0:
             raise ValueError('imu-max-age-ms must be positive and finite')
@@ -188,12 +189,16 @@ class RLWalk:
 
     def get_obs(self):
 
+        self.observation_imu = None
+        self._mark_imu_stage('get_imu')
         read_start_ns = time.monotonic_ns()
         imu_data = self.imu.get_data()
-        check_sample(imu_data, self.imu_max_age_s)
         self.observation_imu = imu_data
+        self._mark_imu_stage('validate_imu')
+        check_sample(imu_data, self.imu_max_age_s)
         imu_received_ns = time.monotonic_ns()
 
+        self._mark_imu_stage('read_joint_positions')
         dof_pos = self.hwi.get_present_positions(
             ignore=[
                 "left_antenna",
@@ -202,6 +207,7 @@ class RLWalk:
         )  # rad
         position_end_ns = time.monotonic_ns()
 
+        self._mark_imu_stage('read_joint_velocities', position_end_ns=position_end_ns)
         dof_vel = self.hwi.get_present_velocities(
             ignore=[
                 "left_antenna",
@@ -230,8 +236,10 @@ class RLWalk:
 
         cmds = self.last_commands
 
+        self._mark_imu_stage('read_contacts', velocity_end_ns=velocity_end_ns)
         feet_contacts = self.feet_contacts.get()
         contacts_end_ns = time.monotonic_ns()
+        self._mark_imu_stage('after_joint_reads', contacts_end_ns=contacts_end_ns)
         check_sample(imu_data, self.imu_max_age_s)  # Joint reads may have blocked.
 
         if self.telemetry is not None:
@@ -298,7 +306,23 @@ class RLWalk:
                 fault_acknowledged=self.imu_fault_acknowledged,
             )
 
+    def _mark_imu_stage(self, stage, **times):
+        if not hasattr(self, 'cycle_diagnostics'):
+            self.cycle_diagnostics = {}
+        self.cycle_diagnostics.update(times)
+        self.cycle_diagnostics['stage'] = stage
+        self.cycle_diagnostics[stage+'_ns'] = time.monotonic_ns()
+
     def _pause_for_imu(self, error):
+        # Capture before restoring GC, printing or recording the pause.
+        detected_ns = time.monotonic_ns()
+        detail = dict(getattr(self, 'cycle_diagnostics', {}))
+        sample = self.observation_imu
+        used = ({key: sample.get(key) for key in (
+            'sample_index', 'sample_start_monotonic_ns', 'sample_end_monotonic_ns')}
+            if sample is not None else None)
+        latest = self.imu.diagnostic_snapshot() if hasattr(self.imu, 'diagnostic_snapshot') else None
+        writer = self.telemetry.writer_snapshot() if self.telemetry is not None and hasattr(self.telemetry, 'writer_snapshot') else None
         self.imu_fault = str(error)
         self.imu_fault_acknowledged = False
         self.paused = True
@@ -307,6 +331,9 @@ class RLWalk:
         print('PAUSA IMU:', self.imu_fault, flush=True)
         if self.telemetry is not None:
             self.telemetry.record('imu_fault', message=self.imu_fault,
+                                  detected_monotonic_ns=detected_ns, diagnostic=detail,
+                                  used_sample=used, latest_reader=latest, writer=writer,
+                                  commands=self.last_commands,
                                   response='pause_policy_hold_last_target')
         self._publish_control_status()
 
@@ -350,6 +377,8 @@ class RLWalk:
                 if self.runtime_budget is not None:
                     self.runtime_budget.maintain()
                 # GC maintenance can age IMU data; require fresh readings afterward.
+                self.observation_imu = None
+                self._mark_imu_stage('resume_imu_ready')
                 self.imu.wait_ready(timeout_s=3 if self.runtime_budget is not None else 0)
                 if self.runtime_budget is not None:
                     self.runtime_budget.begin()
@@ -385,6 +414,7 @@ class RLWalk:
         i = 0
         previous_cycle_ns = None
         previous_paused = None
+        attempt = 0
         try:
             self.start()
             print("Starting")
@@ -396,6 +426,10 @@ class RLWalk:
                 cycle_start_ns = time.monotonic_ns()
                 cycle_dt_ms = (cycle_start_ns-previous_cycle_ns)/1e6 if previous_cycle_ns is not None else None
                 previous_cycle_ns = cycle_start_ns
+                self.cycle_diagnostics = dict(attempt=attempt, next_action_cycle=i,
+                                              cycle_start_ns=cycle_start_ns, stage='commands')
+                self.observation_imu = None
+                attempt += 1
 
                 if self.commands:
                     self.last_commands, self.buttons, left_trigger, right_trigger = (
@@ -462,6 +496,7 @@ class RLWalk:
                     time.sleep(0.1)
                     continue
 
+                self._mark_imu_stage('runtime_budget_before_observation')
                 if not self._check_runtime_budget():
                     continue
                 try:
@@ -484,16 +519,21 @@ class RLWalk:
                         print("BREAKING ")
                         break
 
+                self._mark_imu_stage('inference')
                 inference_start_ns = time.monotonic_ns()
                 action = self.policy.infer(obs)
                 inference_end_ns = time.monotonic_ns()
+                self._mark_imu_stage('after_inference_used_sample', inference_start_ns=inference_start_ns,
+                                     inference_end_ns=inference_end_ns)
                 try:
                     check_sample(self.observation_imu, self.imu_max_age_s)
+                    self._mark_imu_stage('after_inference_latest_sample')
                     self.imu.get_data()  # A concurrent reader failure must not be hidden.
                 except ImuDataError as exc:
                     self._pause_for_imu(exc)
                     continue
 
+                self._mark_imu_stage('prepare_targets')
                 candidate_targets = self.init_pos + action * self.action_scale
                 unfiltered_targets = candidate_targets.copy()
 
@@ -523,10 +563,12 @@ class RLWalk:
                     candidate_targets, list(self.hwi.joints.keys())
                 )
 
+                self._mark_imu_stage('runtime_budget_before_write')
                 if not self._check_runtime_budget():
                     if self.action_filter is not None:
                         self.action_filter.current_action, self.action_filter.last_action = filter_state
                     continue
+                self._mark_imu_stage('before_motor_write')
                 write_start_ns = time.monotonic_ns()
                 try:
                     check_sample(self.observation_imu, self.imu_max_age_s, now_ns=write_start_ns)
@@ -688,6 +730,7 @@ if __name__ == "__main__":
         recorder = TelemetryRecorder(args.telemetry_dir, label=args.telemetry_label,
                                      writer_yield_ms=args.telemetry_writer_yield_ms, metadata={
             'runtime_gc': args.runtime_gc, 'active_window_s': args.active_window_s,
+            'imu_fault_diagnostics_version': 1,
             'max_rss_growth_mb': args.max_rss_growth_mb, 'min_available_mb': args.min_available_mb,
             'model_name': Path(args.onnx_model_path).name,
             'model_sha256': file_sha256(args.onnx_model_path),

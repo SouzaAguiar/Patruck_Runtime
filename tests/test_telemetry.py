@@ -281,3 +281,32 @@ def test_real_web_state_pause_timeout_and_disconnect(tmp_path):
     np.testing.assert_array_equal(inputs[0][6:13], cycles[0]['commands'])
     assert summary.summarize(logger.folder)['web_command_cycles'] == {
         'fresh': 1, 'timed_out': 1, 'disconnected': 1}
+
+
+def test_writer_timing_export_and_active_snapshot(tmp_path, monkeypatch):
+    observed = []
+    original = TelemetryRecorder._publish_data
+    def capture(self, rows, timing):
+        observed.append(self.writer_snapshot())
+        return original(self, rows, timing)
+    monkeypatch.setattr(TelemetryRecorder, '_publish_data', capture)
+    with TelemetryRecorder(tmp_path, writer_yield_ms=1) as recorder:
+        recorder.record('test', value=1)
+    data = json.loads((recorder.folder/'writer_timing.json').read_text())
+    assert data['total_batches'] == len(data['batches']) >= 1
+    assert data['omitted_batches'] == 0
+    assert observed[0]['active']['phase'] == 'serialize_write'
+    assert recorder.writer_snapshot()['active'] is None
+    for item in data['batches']:
+        assert item['start_monotonic_ns'] <= item['serialize_write_end_monotonic_ns'] <= item['fsync_end_monotonic_ns'] <= item['end_monotonic_ns']
+
+
+def test_writer_timing_preserved_on_publication_error(tmp_path, monkeypatch):
+    def fail(*args): raise OSError('injected publication failure')
+    monkeypatch.setattr(TelemetryRecorder, '_publish_data', fail)
+    recorder = TelemetryRecorder(tmp_path)
+    recorder.record('test')
+    recorder.close()
+    data = json.loads((recorder.folder/'writer_timing.json').read_text())
+    assert data['batches'][0]['failed'] is True
+    assert recorder.error and recorder.writer_snapshot()['active'] is None

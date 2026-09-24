@@ -147,6 +147,8 @@ def test_sensor_failure_latches_pause_and_does_not_infer_or_write():
 def test_sample_aging_during_work_never_writes_or_commits_action_history(stage):
     cls, instance, inputs, writes = walk()
     initial_targets = instance.motor_targets.copy()
+    events = []
+    instance.telemetry = SimpleNamespace(record=lambda kind, **fields: events.append(dict(kind=kind, **fields)))
     def expire():
         instance.observation_imu['sample_start_monotonic_ns'] -= 100_000_000
     if stage == 'joints':
@@ -169,6 +171,13 @@ def test_sample_aging_during_work_never_writes_or_commits_action_history(stage):
         cls.run.__globals__['make_action_dict'] = make_action
     instance.run()
     assert not writes and instance.imu_fault
+    fault = next(e for e in events if e['kind'] == 'imu_fault')
+    assert fault['diagnostic']['stage'] == {
+        'joints': 'after_joint_reads', 'inference': 'after_inference_used_sample',
+        'before_write': 'before_motor_write'}[stage]
+    assert fault['used_sample']['sample_index'] == 4
+    assert fault['detected_monotonic_ns'] >= fault['diagnostic']['cycle_start_ns']
+    assert fault['diagnostic']['next_action_cycle'] == 0
     assert instance.imitation_i == 0
     np.testing.assert_array_equal(instance.last_action, np.zeros(14))
     np.testing.assert_array_equal(instance.motor_targets, initial_targets)
@@ -198,3 +207,34 @@ def test_raw_sensor_setup_failure_closes_bus(monkeypatch):
     with pytest.raises(ImuDataError):
         raw_imu.Imu(50, i2c_bus=8)
     assert closed == [True]
+
+
+def test_fault_context_is_captured_before_pause_restores_gc():
+    _, instance, _, _ = walk()
+    instance.cycle_diagnostics = dict(stage='get_imu', attempt=12)
+    instance.observation_imu = None
+    instance.imu.diagnostic_snapshot = lambda: {'latest_sample': {'sample_index': 9}, 'error': 'stale'}
+    def pause():
+        instance.cycle_diagnostics['stage'] = 'changed_by_pause'
+    instance.runtime_budget = SimpleNamespace(pause=pause)
+    events = []
+    instance.telemetry = SimpleNamespace(record=lambda kind, **fields:events.append(fields),
+                                        writer_snapshot=lambda:{'active':{'chunk':3}})
+    instance._pause_for_imu(ImuDataError('stale'))
+    assert events[0]['diagnostic']['stage'] == 'get_imu'
+    assert events[0]['used_sample'] is None
+    assert events[0]['latest_reader']['latest_sample']['sample_index'] == 9
+    assert events[0]['writer']['active']['chunk'] == 3
+
+
+def test_cached_reader_diagnostics_does_not_read_hardware():
+    from mini_bdx_runtime.raw_imu import Imu
+    reader = Imu.__new__(Imu)
+    reader.samples = LatestImuSample(.05)
+    reader.samples.publish(sample(19))
+    reader.samples.fail('injected stale')
+    snapshot = reader.diagnostic_snapshot()
+    assert snapshot['latest_sample']['sample_index'] == 19
+    assert snapshot['error'] == 'injected stale'
+    snapshot['latest_sample']['sample_index'] = 90
+    assert reader.diagnostic_snapshot()['latest_sample']['sample_index'] == 19

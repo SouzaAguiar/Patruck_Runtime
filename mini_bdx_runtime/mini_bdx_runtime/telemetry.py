@@ -1,5 +1,6 @@
 """Bounded asynchronous telemetry; no hardware imports or control decisions."""
 from datetime import datetime, timezone
+from collections import deque
 import hashlib
 import json
 import math
@@ -63,8 +64,12 @@ class TelemetryRecorder:
         self.error = None
         self.closed = False
         self.close_reason = 'completed'
+        self._writer_window = None
+        self._publish_timings = deque(maxlen=4096)
+        self._publish_timing_count = 0
         atomic_json(self.folder / 'metadata.json', {
             'schema': 1, 'label': label, 'started_utc': stamp,
+            'writer_timing_schema': 1,
             'clock_anchor': {'unix_ns': time.time_ns(), 'monotonic_ns': time.monotonic_ns()},
             'python': sys.version, 'platform': platform.platform(),
             'flush_seconds': flush_seconds, 'queue_capacity_records': queue_size,
@@ -104,6 +109,26 @@ class TelemetryRecorder:
         })
 
     def _publish(self, rows):
+        timing = dict(chunk=self.chunks, records=len(rows), start_monotonic_ns=time.monotonic_ns())
+        self._writer_window = dict(timing, phase='serialize_write')
+        try:
+            self._publish_data(rows, timing)
+        except BaseException:
+            timing['failed'] = True
+            raise
+        finally:
+            timing['end_monotonic_ns'] = time.monotonic_ns()
+            self._publish_timings.append(timing)
+            self._publish_timing_count += 1
+            self._writer_window = None
+
+    def writer_snapshot(self):
+        active = self._writer_window
+        return dict(snapshot_monotonic_ns=time.monotonic_ns(),
+                    active=dict(active) if active is not None else None,
+                    queue_records=self.queue.qsize())
+
+    def _publish_data(self, rows, timing):
         path = self.folder / f'chunk-{self.chunks:06d}.jsonl'
         temporary = path.with_suffix('.jsonl.tmp')
         with temporary.open('w', encoding='utf-8') as stream:
@@ -111,8 +136,12 @@ class TelemetryRecorder:
                 stream.write(json.dumps(row, ensure_ascii=False, allow_nan=False, separators=(',', ':')) + '\n')
                 if self.writer_yield_s:
                     time.sleep(self.writer_yield_s)
+            timing['serialize_write_end_monotonic_ns'] = time.monotonic_ns()
+            self._writer_window = dict(timing, phase='flush_fsync')
             stream.flush()
             os.fsync(stream.fileno())
+            timing['fsync_end_monotonic_ns'] = time.monotonic_ns()
+        self._writer_window = dict(timing, phase='publish_status')
         os.replace(temporary, path)
         self.written += len(rows)
         self.chunks += 1
@@ -158,6 +187,20 @@ class TelemetryRecorder:
                 self._status('failed')
             except Exception:
                 pass
+        if not self.thread.is_alive():
+            try:
+                atomic_json(self.folder/'writer_timing.json', {
+                    'clock': 'monotonic_ns', 'capacity': 4096,
+                    'total_batches': self._publish_timing_count,
+                    'omitted_batches': max(0, self._publish_timing_count-len(self._publish_timings)),
+                    'batches': list(self._publish_timings),
+                })
+            except Exception as exc:
+                self.error = self.error or f'writer timing export: {type(exc).__name__}: {exc}'
+                try:
+                    self._status('failed')
+                except Exception:
+                    pass
 
     def __enter__(self):
         return self

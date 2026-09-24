@@ -159,6 +159,16 @@ class Imu:
             self.samples.fail('IMU: leitura encerrada')
             self.bus.deinit()
 
+    def diagnostic_snapshot(self):
+        # Cached metadata only: never reads I2C or accepts a rejected sample.
+        with self.samples.condition:
+            sample = self.samples.sample
+            return dict(snapshot_monotonic_ns=time.monotonic_ns(), error=self.samples.error,
+                        valid_run=self.samples.valid_run,
+                        latest_sample={k: sample.get(k) for k in (
+                            'sample_index', 'sample_start_monotonic_ns', 'sample_end_monotonic_ns')}
+                        if sample is not None else None)
+
     def get_data(self):
         return self.samples.get()
 
