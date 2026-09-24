@@ -3,6 +3,8 @@
   const state = {left_x:0,left_y:0,right_x:0,right_y:0,mode:'walk',buttons:{},left_trigger:0,right_trigger:0};
   let paused = true;
   let imuFault = false;
+  let lateralLocked = false;
+  const resetJoysticks = [];
   const status = document.querySelector('#status');
   let socket, timer, reconnectDelay = 500;
 
@@ -11,6 +13,7 @@
     status.querySelector('span').textContent = label;
   }
   function zeroMotion() {
+    resetJoysticks.forEach(reset => reset());
     state.left_x=state.left_y=state.right_x=state.right_y=0;
     state.buttons={}; state.left_trigger=state.right_trigger=0;
     document.querySelectorAll('.knob').forEach(k => k.style.transform='translate(0,0)');
@@ -18,6 +21,7 @@
     send();
   }
   function send() {
+    if (lateralLocked && state.mode === 'walk') state.left_x = 0;
     if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({type:'command',...state}));
   }
   function connect() {
@@ -58,6 +62,7 @@
       const r=element.getBoundingClientRect(), max=r.width*.31;
       let dx=event.clientX-(r.left+r.width/2), dy=event.clientY-(r.top+r.height/2);
       if(horizontalOnly) dy=0;
+      if(prefix==='left' && lateralLocked && state.mode==='walk') dx=0;
       const length=Math.hypot(dx,dy); if(length>max){dx*=max/length;dy*=max/length}
       state[`${prefix}_x`]=Math.abs(dx/max)<.08?0:dx/max;
       state[`${prefix}_y`]=Math.abs(dy/max)<.08?0:-dy/max;
@@ -67,9 +72,19 @@
     element.onpointerdown=e=>{pointer=e.pointerId;element.setPointerCapture(pointer);update(e)};
     element.onpointermove=e=>{if(e.pointerId===pointer)update(e)};
     element.onpointerup=end;element.onpointercancel=end;
+    element.onlostpointercapture=end;
+    resetJoysticks.push(()=>{pointer=null;});
   }
   joystick(document.querySelector('#leftStick'),'left');
   joystick(document.querySelector('#rightStick'),'right',true);
+
+  const lateralLockButton=document.querySelector('#lateralLock');
+  lateralLockButton.onclick=()=>{
+    lateralLocked=!lateralLocked;
+    lateralLockButton.setAttribute('aria-pressed',String(lateralLocked));
+    lateralLockButton.textContent=lateralLocked?'Somente frente/trás: ligado':'Somente frente/trás: desligado';
+    zeroMotion(); // Changing mode requires a new gesture; never restore a held axis.
+  };
 
   function bindMomentary(button, name) {
     const down=e=>{e.preventDefault();state.buttons[name]=true;button.classList.add('active');send()};
