@@ -265,7 +265,7 @@ def test_selection_waits_bounded_and_uses_new_values_without_committing(arrives)
     else:
         with pytest.raises(ImuDataError, match='margem temporal'):
             instance._select_imu_for_inference(obs)
-        assert clock[0] == 1_003_000_000  # Period minus reserve, stricter than 5 ms.
+        assert clock[0] == 1_005_000_000  # Bounded wait; age reserve is separate.
     assert not writes and instance.imitation_i == 0
     np.testing.assert_array_equal(instance.last_action, np.zeros(14))
     np.testing.assert_array_equal(obs, np.zeros(101))
@@ -308,11 +308,12 @@ def test_reader_error_during_selection_pauses_without_inference():
     assert not inputs and not writes and instance.imitation_i == 0
 
 
-def test_selection_rejects_fresh_sample_after_wait_deadline():
+@pytest.mark.parametrize('delay_ns, accepted', [(6_000_000, True), (21_000_000, False)])
+def test_selection_accepts_fresh_after_wait_but_not_after_cycle_deadline(delay_ns, accepted):
     cls, instance, _, writes = walk()
     clock = [1_000_000_000]
     cls.run.__globals__['time'].monotonic_ns = lambda: clock[0]
-    cls.run.__globals__['time'].sleep = lambda s: clock.__setitem__(0, clock[0] + 6_000_000)
+    cls.run.__globals__['time'].sleep = lambda s: clock.__setitem__(0, clock[0] + delay_ns)
     old = dict(gyro=[0., 0., 0.], accelero=[0., 0., 9.81], sample_index=1,
                sample_start_monotonic_ns=959_000_000, sample_end_monotonic_ns=980_000_000)
     fresh = dict(old, sample_index=2, sample_start_monotonic_ns=990_000_000,
@@ -320,6 +321,27 @@ def test_selection_rejects_fresh_sample_after_wait_deadline():
     instance.observation_imu = old
     instance.cycle_diagnostics = {'cycle_start_ns': clock[0]}
     instance.imu.get_data = lambda: fresh if clock[0] > 1_000_000_000 else old
-    with pytest.raises(ImuDataError, match='prazo de selecao'):
+    if accepted:
         instance._select_imu_for_inference(np.zeros(101))
+        assert instance.observation_imu['sample_index'] == 2
+    else:
+        with pytest.raises(ImuDataError, match='prazo do ciclo'):
+            instance._select_imu_for_inference(np.zeros(101))
     assert not writes and instance.imitation_i == 0
+
+
+def test_selection_can_wait_after_old_ten_ms_cutoff():
+    cls, instance, _, _ = walk()
+    clock = [1_010_300_000]
+    cls.run.__globals__['time'].monotonic_ns = lambda: clock[0]
+    cls.run.__globals__['time'].sleep = lambda s: clock.__setitem__(0, clock[0]+round(s*1e9))
+    old = dict(gyro=[0.,0.,0.], accelero=[0.,0.,9.81], sample_index=1,
+               sample_start_monotonic_ns=970_000_000, sample_end_monotonic_ns=990_000_000)
+    fresh = dict(old, sample_index=2, sample_start_monotonic_ns=990_000_000,
+                 sample_end_monotonic_ns=1_011_000_000)
+    instance.observation_imu = old
+    instance.cycle_diagnostics = {'cycle_start_ns':1_000_000_000}
+    instance.imu.get_data = lambda: fresh if clock[0]>=1_011_000_000 else old
+    instance._select_imu_for_inference(np.zeros(101))
+    assert instance.observation_imu['sample_index']==2
+    assert clock[0]<1_015_300_000

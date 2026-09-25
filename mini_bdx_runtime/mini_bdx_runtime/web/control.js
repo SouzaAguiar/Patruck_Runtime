@@ -4,6 +4,8 @@
   let paused = true;
   let imuFault = false;
   let lateralLocked = false;
+  let longitudinalLimit = 0.03;
+  let handSupport = false;
   const resetJoysticks = [];
   const status = document.querySelector('#status');
   let socket, timer, reconnectDelay = 500;
@@ -23,7 +25,8 @@
   function send() {
     if (lateralLocked && state.mode === 'walk') state.left_x = 0;
     if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({type:'command',...state,
-      lateral_locked:lateralLocked,client_version:'web-lateral-lock-v2'}));
+      lateral_locked:lateralLocked,longitudinal_limit:longitudinalLimit,
+      hand_support:handSupport,client_version:'web-controlled-tests-v3'}));
   }
   function connect() {
     if (!token) { setStatus(false,'Token ausente'); return; }
@@ -84,6 +87,17 @@
     lateralLocked=!lateralLocked;
     lateralLockButton.setAttribute('aria-pressed',String(lateralLocked));
     zeroMotion(); // Changing mode requires a new gesture; never restore a held axis.
+  };
+  document.querySelector('#longitudinalLimit').onchange=e=>{
+    longitudinalLimit=Number(e.target.value);
+    zeroMotion(); // Changing the ceiling cannot accelerate a held gesture.
+  };
+  const supportButton=document.querySelector('#handSupport');
+  supportButton.onclick=()=>{
+    handSupport=!handSupport;
+    supportButton.setAttribute('aria-pressed',String(handSupport));
+    supportButton.textContent=handSupport?'Apoio da mão: sim':'Apoio da mão: não';
+    send(); // Annotation only: never changes motor commands or pause state.
   };
 
   function bindMomentary(button, name) {

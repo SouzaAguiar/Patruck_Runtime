@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
   <meta name="theme-color" content="#07111f">
   <title>Open Duck Control</title>
-  <link rel="stylesheet" href="/static/control.css?v=web-lateral-lock-v2">
+  <link rel="stylesheet" href="/static/control.css?v=web-controlled-tests-v3">
 </head>
 <body>
   <main>
@@ -40,6 +40,15 @@
 
     <div class="movementOptions">
       <button id="lateralLock" class="axisLock" type="button" aria-pressed="false" aria-controls="leftStick" aria-label="Somente frente e trás">Só frente/trás</button>
+      <label class="testLimit" for="longitudinalLimit">Limite frente/trás
+        <select id="longitudinalLimit">
+          <option value="0.03" selected>0,03 m/s</option>
+          <option value="0.05">0,05 m/s</option>
+          <option value="0.08">0,08 m/s</option>
+          <option value="0.15">0,15 m/s</option>
+        </select>
+      </label>
+      <button id="handSupport" class="supportMarker" type="button" aria-pressed="false">Apoio da mão: não</button>
     </div>
 
     <section class="extras">
@@ -51,6 +60,6 @@
     <p id="imuFault" class="hint hidden" role="alert"></p>
     <p class="hint">Mantenha esta tela aberta enquanto o robô estiver em movimento.</p>
   </main>
-  <script src="/static/control.js?v=web-lateral-lock-v2"></script>
+  <script src="/static/control.js?v=web-controlled-tests-v3"></script>
 </body>
 </html>

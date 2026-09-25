@@ -252,7 +252,8 @@ def test_real_web_state_pause_timeout_and_disconnect(tmp_path):
             controller.state.update({'left_y': 1., 'paused': True})
         elif count[0] == 2:
             controller.state.update({'left_y': 1., 'left_x': .7, 'paused': False,
-                                     'lateral_locked': True, 'client_version': 'web-lateral-lock-v2'})
+                                     'lateral_locked': True, 'client_version': 'web-controlled-tests-v3',
+                                     'longitudinal_limit': .03, 'hand_support': True})
         elif count[0] == 3:
             controller.state._last_update -= 1.
         elif count[0] == 4:
@@ -272,13 +273,15 @@ def test_real_web_state_pause_timeout_and_disconnect(tmp_path):
     assert [r['paused'] for r in records if r['kind'] == 'pause_changed'] == [True, False]
     assert sum(r['kind'] == 'paused' for r in records) == 1
     assert len(cycles) == 3
-    assert cycles[0]['commands'][0] == .15
+    assert cycles[0]['commands'][0] == .03
     assert cycles[0]['commands'][1] == 0
     diagnostic = cycles[0]['command_source']
     assert diagnostic['received_axes']['left_x'] == .7
     assert diagnostic['lateral_lock_requested'] is True
     assert diagnostic['lateral_lock_applied'] is True
-    assert diagnostic['client_version'] == 'web-lateral-lock-v2'
+    assert diagnostic['client_version'] == 'web-controlled-tests-v3'
+    assert diagnostic['longitudinal_limit_m_s'] == .03
+    assert diagnostic['hand_support'] is True
     assert diagnostic['effective_commands'] == cycles[0]['commands']
     assert cycles[0]['command_source']['command_fresh'] is True
     assert cycles[1]['commands'] == [0.]*7

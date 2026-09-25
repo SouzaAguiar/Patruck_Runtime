@@ -83,6 +83,16 @@ class WebCommandState:
         lock_enabled = lock_value if lock_reported else 'lateral_locked' in payload
         effective_mode = 'head' if mode == 'head' and self.allow_head_control else 'walk'
         lock_applied = lock_enabled and effective_mode == 'walk'
+        # Legacy clients keep their existing range; an explicit invalid limit
+        # falls back to the low-speed test setting rather than full speed.
+        limit_reported = 'longitudinal_limit' in payload
+        longitudinal_limit = max(abs(v) for v in X_RANGE)
+        if limit_reported:
+            try:
+                requested_limit = float(payload['longitudinal_limit'])
+            except (TypeError, ValueError):
+                requested_limit = 0.0
+            longitudinal_limit = requested_limit if 0 < requested_limit <= longitudinal_limit else .03
         commands = [0.0] * 7
 
         if mode == "head" and self.allow_head_control:
@@ -96,6 +106,7 @@ class WebCommandState:
             )
         else:
             commands[0] = _scale_axis(left_y, X_RANGE)
+            commands[0] = max(-longitudinal_limit, min(longitudinal_limit, commands[0]))
             commands[1] = 0.0 if lock_applied else _scale_axis(left_x, Y_RANGE)
             commands[2] = _scale_axis(right_x, YAW_RANGE)
 
@@ -116,6 +127,10 @@ class WebCommandState:
                 'lateral_lock_reported': lock_reported,
                 'lateral_lock_requested': lock_value if lock_reported else None,
                 'lateral_lock_applied': lock_applied,
+                'longitudinal_limit_reported': limit_reported,
+                'longitudinal_limit_m_s': longitudinal_limit,
+                'hand_support_reported': isinstance(payload.get('hand_support'), bool),
+                'hand_support': payload.get('hand_support') if isinstance(payload.get('hand_support'), bool) else None,
                 'received_axes': {'left_x': left_x, 'left_y': left_y, 'right_x': right_x},
             }
             self._buttons = buttons

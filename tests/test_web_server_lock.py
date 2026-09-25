@@ -61,3 +61,24 @@ def test_invalid_lock_flag_is_visible_and_conservatively_blocks_lateral():
     assert s.snapshot()[0][1] == 0
     assert s.last_snapshot_metadata['lateral_lock_reported'] is False
     assert s.last_snapshot_metadata['lateral_lock_applied'] is True
+
+
+@pytest.mark.parametrize('limit', [.03, .05, .08, .15])
+@pytest.mark.parametrize('direction', [-1, 1])
+def test_server_caps_both_directions_and_records_hand_support(limit, direction):
+    s = state()
+    s.update(dict(left_x=.7, left_y=direction, right_x=.4, lateral_locked=True,
+                  longitudinal_limit=limit, hand_support=True))
+    assert s.snapshot()[0][:3] == [direction*limit, 0, .4]
+    assert s.last_snapshot_metadata['longitudinal_limit_m_s']==limit
+    assert s.last_snapshot_metadata['hand_support'] is True
+    s.update(dict(left_y=direction*.1,longitudinal_limit=limit,hand_support=False))
+    assert s.snapshot()[0][0]==direction*.015
+    assert s.last_snapshot_metadata['hand_support'] is False
+
+
+@pytest.mark.parametrize('limit', [None, 'bad', float('nan'), float('inf'), -.05, .3])
+def test_invalid_explicit_limit_falls_back_to_low_speed(limit):
+    s = state()
+    s.update(dict(left_y=1,longitudinal_limit=limit))
+    assert s.snapshot()[0][0]==.03
