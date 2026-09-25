@@ -251,7 +251,8 @@ def test_real_web_state_pause_timeout_and_disconnect(tmp_path):
         if count[0] == 1:
             controller.state.update({'left_y': 1., 'paused': True})
         elif count[0] == 2:
-            controller.state.update({'left_y': 1., 'paused': False})
+            controller.state.update({'left_y': 1., 'left_x': .7, 'paused': False,
+                                     'lateral_locked': True, 'client_version': 'web-lateral-lock-v2'})
         elif count[0] == 3:
             controller.state._last_update -= 1.
         elif count[0] == 4:
@@ -272,12 +273,21 @@ def test_real_web_state_pause_timeout_and_disconnect(tmp_path):
     assert sum(r['kind'] == 'paused' for r in records) == 1
     assert len(cycles) == 3
     assert cycles[0]['commands'][0] == .15
+    assert cycles[0]['commands'][1] == 0
+    diagnostic = cycles[0]['command_source']
+    assert diagnostic['received_axes']['left_x'] == .7
+    assert diagnostic['lateral_lock_requested'] is True
+    assert diagnostic['lateral_lock_applied'] is True
+    assert diagnostic['client_version'] == 'web-lateral-lock-v2'
+    assert diagnostic['effective_commands'] == cycles[0]['commands']
     assert cycles[0]['command_source']['command_fresh'] is True
     assert cycles[1]['commands'] == [0.]*7
     assert cycles[1]['command_source']['command_fresh'] is False
     assert cycles[1]['command_source']['connected'] is True
     assert cycles[2]['commands'] == [0.]*7
     assert cycles[2]['command_source']['connected'] is False
+    assert cycles[1]['command_source']['effective_commands'] == [0.]*7
+    assert cycles[2]['command_source']['effective_commands'] == [0.]*7
     np.testing.assert_array_equal(inputs[0][6:13], cycles[0]['commands'])
     assert summary.summarize(logger.folder)['web_command_cycles'] == {
         'fresh': 1, 'timed_out': 1, 'disconnected': 1}

@@ -33,8 +33,11 @@ test('lateral lock zeros real outgoing commands and requires a new gesture on to
   const last=()=>socket.sent.at(-1);
   stick.onpointerdown(gesture);
   assert.ok(last().left_x>0 && last().left_y>0);
+  assert.equal(last().lateral_locked,false);
+  assert.equal(last().client_version,'web-lateral-lock-v2');
   lock.onclick();
   assert.equal(lock.attrs['aria-pressed'],'true');
+  assert.equal(last().lateral_locked,true);
   assert.equal(last().left_x,0); assert.equal(last().left_y,0);
   stick.onpointermove(gesture);
   assert.equal(last().left_y,0);
@@ -51,6 +54,7 @@ test('lateral lock zeros real outgoing commands and requires a new gesture on to
   assert.equal(last().left_x,0);
   lock.onclick();
   assert.equal(lock.attrs['aria-pressed'],'false');
+  assert.equal(last().lateral_locked,false);
   assert.equal(last().left_x,0); assert.equal(last().left_y,0);
   stick.onpointerdown(gesture);
   assert.ok(last().left_x>0);

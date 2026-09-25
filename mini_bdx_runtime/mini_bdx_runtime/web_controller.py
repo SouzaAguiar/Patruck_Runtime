@@ -68,12 +68,21 @@ class WebCommandState:
     _desired_paused: bool | None = field(default=None, init=False)
     last_snapshot_metadata: dict[str, Any] = field(default_factory=dict, init=False)
     _runtime_status: dict[str, Any] | None = field(default=None, init=False)
+    _command_details: dict[str, Any] = field(default_factory=dict, init=False)
+    _command_sequence: int = field(default=0, init=False)
 
     def update(self, payload: dict[str, Any]) -> None:
         mode = payload.get("mode", "walk")
         left_x = _clamp(payload.get("left_x", 0))
         left_y = _clamp(payload.get("left_y", 0))
         right_x = _clamp(payload.get("right_x", 0))
+        lock_value = payload.get('lateral_locked')
+        lock_reported = isinstance(lock_value, bool)
+        # Legacy clients remain identifiable. Malformed explicit flags cannot
+        # silently disable a requested restriction.
+        lock_enabled = lock_value if lock_reported else 'lateral_locked' in payload
+        effective_mode = 'head' if mode == 'head' and self.allow_head_control else 'walk'
+        lock_applied = lock_enabled and effective_mode == 'walk'
         commands = [0.0] * 7
 
         if mode == "head" and self.allow_head_control:
@@ -87,7 +96,7 @@ class WebCommandState:
             )
         else:
             commands[0] = _scale_axis(left_y, X_RANGE)
-            commands[1] = _scale_axis(left_x, Y_RANGE)
+            commands[1] = 0.0 if lock_applied else _scale_axis(left_x, Y_RANGE)
             commands[2] = _scale_axis(right_x, YAW_RANGE)
 
         raw_buttons = payload.get("buttons", {})
@@ -97,6 +106,18 @@ class WebCommandState:
 
         with self._lock:
             self._commands = [round(value, 3) for value in commands]
+            self._command_sequence += 1
+            version = payload.get('client_version')
+            self._command_details = {
+                'command_sequence': self._command_sequence,
+                'client_version': version[:64] if isinstance(version, str) else None,
+                'requested_mode': mode if mode in ('walk', 'head') else 'unknown',
+                'effective_mode': effective_mode,
+                'lateral_lock_reported': lock_reported,
+                'lateral_lock_requested': lock_value if lock_reported else None,
+                'lateral_lock_applied': lock_applied,
+                'received_axes': {'left_x': left_x, 'left_y': left_y, 'right_x': right_x},
+            }
             self._buttons = buttons
             self._left_trigger = _clamp(payload.get("left_trigger", 0), 0, 1)
             self._right_trigger = _clamp(payload.get("right_trigger", 0), 0, 1)
@@ -119,11 +140,16 @@ class WebCommandState:
             age = now - self._last_update if self._last_update else None
             fresh = self._connected and age is not None and age <= self.timeout
             self.last_snapshot_metadata = {
+                **self._command_details,
                 'source': 'web', 'connected': self._connected, 'command_fresh': fresh,
                 'command_age_ms': age*1000 if age is not None else None,
                 'timeout_ms': self.timeout*1000,
                 'sampled_monotonic_ns': time.monotonic_ns(),
+                'control_diagnostics_version': 1,
+                'effective_commands': self._commands.copy() if fresh else [0.0] * 7,
             }
+            if 'received_axes' in self.last_snapshot_metadata:
+                self.last_snapshot_metadata['received_axes'] = self._command_details['received_axes'].copy()
             if not fresh:
                 return [0.0] * 7, {name: False for name in self._buttons}, 0.0, 0.0, False
             return (
@@ -189,7 +215,8 @@ class WebController:
         return bool(supplied) and secrets.compare_digest(supplied, self.token)
 
     async def _index(self, request: web.Request) -> web.FileResponse:
-        return web.FileResponse(Path(__file__).with_name("web") / "index.html")
+        return web.FileResponse(Path(__file__).with_name("web") / "index.html",
+                                headers={'Cache-Control': 'no-store'})
 
     async def _config(self, request: web.Request) -> web.Response:
         return web.json_response(

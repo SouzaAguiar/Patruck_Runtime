@@ -22,7 +22,8 @@
   }
   function send() {
     if (lateralLocked && state.mode === 'walk') state.left_x = 0;
-    if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({type:'command',...state}));
+    if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({type:'command',...state,
+      lateral_locked:lateralLocked,client_version:'web-lateral-lock-v2'}));
   }
   function connect() {
     if (!token) { setStatus(false,'Token ausente'); return; }
