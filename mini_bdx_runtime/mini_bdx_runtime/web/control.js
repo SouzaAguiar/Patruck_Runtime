@@ -82,7 +82,6 @@
   lateralLockButton.onclick=()=>{
     lateralLocked=!lateralLocked;
     lateralLockButton.setAttribute('aria-pressed',String(lateralLocked));
-    lateralLockButton.textContent=lateralLocked?'Somente frente/trás: ligado':'Somente frente/trás: desligado';
     zeroMotion(); // Changing mode requires a new gesture; never restore a held axis.
   };
 

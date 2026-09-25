@@ -7,4 +7,17 @@ header{display:flex;align-items:center;justify-content:space-between}h1{font-siz
 .controls{display:grid;grid-template-columns:1fr 150px 1fr;align-items:end;gap:clamp(14px,5vw,54px)}.joystickBlock{text-align:center}.joystick{position:relative;width:min(28vw,210px);aspect-ratio:1;margin:8px auto 0;border-radius:50%;border:1px solid #2b4964;background:radial-gradient(circle,#162a40 0 16%,#0b1726 17% 58%,#102238 59%);box-shadow:inset 0 0 35px #0008,0 10px 30px #0008}.cross:before,.cross:after{content:"";position:absolute;background:#4e6b8229}.cross:before{left:50%;top:12%;width:1px;height:76%}.cross:after{top:50%;left:12%;height:1px;width:76%}.knob{position:absolute;width:38%;aspect-ratio:1;left:31%;top:31%;border-radius:50%;background:linear-gradient(145deg,#28455f,#14293e);border:1px solid #4a6983;box-shadow:0 8px 18px #000b;will-change:transform}
 button{border:1px solid var(--line);border-radius:10px;background:#11243a;color:var(--text);font-weight:700;letter-spacing:.06em;padding:12px;cursor:pointer}.centerActions{display:grid;gap:9px}.primary{background:var(--cyan);border-color:var(--cyan);color:#041319}.hold.active{background:#f5b748;color:#241500}.speed{display:grid;grid-template-columns:42px 1fr 42px;align-items:center;text-align:center;font-size:10px;color:var(--muted)}.speed button{padding:9px}.extras{display:flex;justify-content:center;gap:9px}.extras button{min-width:95px}.danger{background:#4d1520;border-color:#9d3040;color:#ffabb4}.hidden{display:none!important}.hint{text-align:center;color:var(--muted);font-size:11px;margin:0}
 @media (orientation:portrait){main{padding:15px}.video{max-height:31dvh}.controls{grid-template-columns:1fr 105px 1fr;gap:8px}.joystick{width:min(35vw,180px)}.centerActions button{padding:10px 4px;font-size:11px}.extras button{min-width:0;flex:1;padding:10px 5px;font-size:10px}}
-.axisLock{display:block;max-width:210px;margin:10px auto 0;padding:8px;font-size:11px;letter-spacing:0;line-height:1.3}.axisLock[aria-pressed="true"]{background:var(--cyan);color:#041319;border-color:var(--cyan)}.axisLock:focus-visible{outline:2px solid var(--text);outline-offset:3px}
+/* Keep joystick geometry inside its grid column on narrow screens. */
+.controls{grid-template-columns:minmax(0,1fr) 150px minmax(0,1fr);flex-shrink:0}
+.joystickBlock{min-width:0}
+.joystick{width:min(100%,210px)}
+.movementOptions{display:flex;justify-content:flex-start;flex-shrink:0;margin-top:4px}
+.axisLock{display:inline-flex;align-items:center;gap:9px;position:relative;min-height:44px;padding:6px 8px;background:transparent;border:0;font-size:12px;letter-spacing:0;line-height:1.3;font-weight:500;color:var(--muted)}
+.axisLock::before{content:"";width:32px;height:18px;flex:0 0 32px;border-radius:12px;background:var(--line);border:1px solid #4a6983}
+.axisLock::after{content:"";position:absolute;left:11px;top:50%;width:12px;height:12px;border-radius:50%;background:var(--text);transform:translateY(-50%)}
+.axisLock[aria-pressed="true"]{color:var(--text)}
+.axisLock[aria-pressed="true"]::before{background:var(--cyan);border-color:var(--cyan)}
+.axisLock[aria-pressed="true"]::after{left:25px;background:#041319}
+.axisLock:focus-visible{outline:2px solid var(--text);outline-offset:2px}
+@media (orientation:portrait){.controls{grid-template-columns:minmax(0,1fr) 105px minmax(0,1fr)}.joystick{width:min(100%,180px)}}
+@media (max-width:360px){main{padding:12px}.controls{grid-template-columns:minmax(0,1fr) 96px minmax(0,1fr);gap:6px}.joystickBlock>span{font-size:10px;letter-spacing:.1em}.speed{grid-template-columns:30px 1fr 30px}}
