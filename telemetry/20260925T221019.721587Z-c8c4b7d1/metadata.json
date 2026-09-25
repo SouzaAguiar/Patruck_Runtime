@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "label": "analise-deriva",
+  "started_utc": "20260925T221019.721587Z",
+  "writer_timing_schema": 1,
+  "clock_anchor": {
+    "unix_ns": 1790374219726981583,
+    "monotonic_ns": 734192535574
+  },
+  "python": "3.11.2 (main, May 12 2026, 05:17:27) [GCC 12.2.0]",
+  "platform": "Linux-6.12.96+rpt-rpi-v8-aarch64-with-glibc2.36",
+  "flush_seconds": 1.0,
+  "queue_capacity_records": 512,
+  "writer_yield_ms": 1.0,
+  "nonfinite_values": "null",
+  "settings": {
+    "runtime_gc": "bounded",
+    "active_window_s": 10.0,
+    "imu_fault_diagnostics_version": 1,
+    "imu_selection_version": 1,
+    "imu_selection_max_wait_ms": 5,
+    "imu_selection_reserve_ms": 10,
+    "max_rss_growth_mb": 64,
+    "min_available_mb": 64,
+    "model_name": "student.onnx",
+    "model_sha256": "48f6a91a5540650dd43317aca4f4c37bc3f1b98780a7a232ab73aa810dc15a52",
+    "runtime_sha256": "5de0b8cbe34a76d3cf12ad1fac419f2d969e6a75276b20ccb0cfd79ad92e2c72",
+    "config_sha256": "073d713035d6b7c6e1a2fa84c7903d7da854fa92cb6d41a10453f1624548223b",
+    "control_source": "web",
+    "control_freq_hz": 50,
+    "action_scale": 0.25,
+    "pid_requested": [
+      30,
+      0,
+      0
+    ],
+    "pitch_bias_requested_deg": 0.02,
+    "cutoff_frequency_hz": null,
+    "web_command_timeout_s": 0.6,
+    "imu_i2c_bus": 8,
+    "imu_max_age_ms": 50.0,
+    "source_sha256": {
+      "raw_imu.py": "d4cd5862f12c473336e007a07ce582286c6fc99b564d1a57167afaff2dc00516",
+      "imu_safety.py": "50772c76a7069367130f1f88687b3ca7bda8008324b34542ac9a414051c86504",
+      "web_controller.py": "68738b1d09773d06ee97434390528b086973ddfe015d56db4fe96750bdae4ce9",
+      "telemetry.py": "03505f5e7e036426a3eb54b983b7f99a82ce540eaeb8aa21bd84a093a80eca0d",
+      "runtime_budget.py": "61f7606a2b4cb5a2f9b480fbe6052b2c98c403522e03d8862085be27c0692112",
+      "rustypot_position_hwi.py": "ec15bcb576dd17402e4e8092264f7116d2fdf44381f704398f9cac206607ae46"
+    }
+  }
+}
