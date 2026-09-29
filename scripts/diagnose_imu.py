@@ -18,6 +18,7 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'mini_bdx_runtime'))
 from mini_bdx_runtime.telemetry import TelemetryRecorder, atomic_json, file_sha256
+from mini_bdx_runtime.imu_frame import IMU_FRAMES, rotate_vector
 
 GYRO_SCALE = 0.001090830782496456
 REGISTERS = {'chip_id': 0x00, 'page': 0x07, 'calibration_status': 0x35,
@@ -174,7 +175,7 @@ def probe_startup(sensor, capture, recorder, mode, attempts=10, required_good=3)
                        '. Bytes e tentativas preservados na pasta da sessao.')
 
 
-def acquire(sensor, capture, recorder, duration, frequency, reread=True):
+def acquire(sensor, capture, recorder, duration, frequency, reread=True, imu_frame='native'):
     started = time.monotonic()
     count = anomalies = overruns = 0
     last_report = started
@@ -185,9 +186,16 @@ def acquire(sensor, capture, recorder, duration, frequency, reread=True):
         count += 1
         anomalies += int(primary['abnormal'])
         elapsed = time.monotonic()-tick
+        # Preserve primary driver/byte evidence; preview uses the runtime helper.
+        preview = None
+        if not primary['abnormal']:
+            preview = {'imu_frame': imu_frame,
+                       'gyro_rad_s': rotate_vector(primary['gyro']['driver_values'], imu_frame),
+                       'accelerometer_m_s2': rotate_vector(primary['acceleration']['driver_values'], imu_frame)}
         overruns += int(elapsed > 1/frequency)
         recorder.record('imu_sample', index=count-1, elapsed_s=tick-started,
-                        primary=primary, reread=second, acquisition_ms=elapsed*1000)
+                        primary=primary, reread=second, acquisition_ms=elapsed*1000,
+                        frame_preview=preview)
         if recorder.error is not None or recorder.dropped:
             raise RuntimeError('Diagnostic recording failed or dropped samples; inspect status.json')
         if time.monotonic()-last_report >= 10:
@@ -321,6 +329,8 @@ def main():
     parser.add_argument('--no-calibration', action='store_true')
     parser.add_argument('--mode', choices=['ndof', 'imuplus', 'accgyro'], default='ndof')
     parser.add_argument('--no-reread', action='store_true')
+    parser.add_argument('--imu-frame', choices=IMU_FRAMES, default='native',
+                        help='Record a software frame preview alongside untouched driver readings')
     args = parser.parse_args()
     if args.summarize:
         print(json.dumps(summarize(args.summarize), indent=2, ensure_ascii=False))
@@ -358,6 +368,8 @@ def main():
         'driver_sha256': file_sha256(adafruit_bno055.__file__), 'packages': package_versions(),
         'script_sha256': file_sha256(__file__), 'reread_on_anomaly': not args.no_reread,
         'motors_controlled_by_script': False,
+        'imu_frame': args.imu_frame, 'imu_frame_version': 1,
+        'imu_frame_sha256': file_sha256(ROOT/'mini_bdx_runtime/mini_bdx_runtime/imu_frame.py'),
         'host_i2c': host_i2c_info(),
     })
     try:
@@ -382,7 +394,8 @@ def main():
             capture = CapturedI2CDevice(sensor.i2c_device)
             sensor.i2c_device = capture
             probe_startup(sensor, capture, recorder, mode)
-            result = acquire(sensor, capture, recorder, args.duration, args.frequency, not args.no_reread)
+            print('COLETA INICIADA: '+args.label+'; frame='+args.imu_frame, flush=True)
+            result = acquire(sensor, capture, recorder, args.duration, args.frequency, not args.no_reread, args.imu_frame)
             recorder.record('acquisition_complete', **result)
             recorder.record('imu_registers', stage='final', registers=register_snapshot(sensor))
     except KeyboardInterrupt:

@@ -5,13 +5,17 @@ import pickle
 from threading import Thread, Event
 import time
 from mini_bdx_runtime.imu_safety import CheckedModeDevice, ImuDataError, LatestImuSample, open_i2c
+from mini_bdx_runtime.imu_frame import IMU_FRAMES, transform_sample
 
 
 class Imu:
     def __init__(
         self, sampling_freq, user_pitch_bias=0, calibrate=False, upside_down=True,
-        i2c_bus=None, max_age_s=.05,
+        i2c_bus=None, max_age_s=.05, imu_frame='native',
     ):
+        if imu_frame not in IMU_FRAMES:
+            raise ValueError('Unknown IMU frame: ' + str(imu_frame))
+        self.imu_frame = imu_frame
         self.sampling_freq = sampling_freq
         self.calibrate = calibrate
         if not np.isfinite(sampling_freq) or sampling_freq <= 0:
@@ -145,12 +149,12 @@ class Imu:
                     if accelero.shape == (3,):
                         accelero = accelero.copy()
                         accelero[0] -= self.x_offset
-                    self.samples.publish({
+                    self.samples.publish(transform_sample({
                         'gyro': gyro, 'accelero': accelero,
                         'sample_start_monotonic_ns': sample_start_ns,
                         'sample_end_monotonic_ns': time.monotonic_ns(),
                         'sample_index': sample_index,
-                    })
+                    }, getattr(self, 'imu_frame', 'native')))
                 except Exception as exc:
                     self.samples.fail(f'{type(exc).__name__}: {exc}')
                 sample_index += 1

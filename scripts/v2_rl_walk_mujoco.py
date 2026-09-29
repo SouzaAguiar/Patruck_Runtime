@@ -8,6 +8,7 @@ from mini_bdx_runtime.rustypot_position_hwi import HWI
 from mini_bdx_runtime.onnx_infer import OnnxInfer
 
 from mini_bdx_runtime.raw_imu import Imu
+from mini_bdx_runtime.imu_frame import IMU_FRAMES
 from mini_bdx_runtime.imu_safety import ImuDataError, check_sample
 from mini_bdx_runtime.runtime_budget import RuntimeBudget, RuntimeBudgetError
 from mini_bdx_runtime.poly_reference_motion import PolyReferenceMotion
@@ -53,6 +54,7 @@ class RLWalk:
         imu_max_age_ms=50,
         start_paused=None,
         runtime_budget=None,
+        imu_frame='native',
     ):
 
         self.runtime_budget = runtime_budget
@@ -101,6 +103,7 @@ class RLWalk:
             upside_down=self.duck_config.imu_upside_down,
             i2c_bus=imu_i2c_bus,
             max_age_s=self.imu_max_age_s,
+            imu_frame=imu_frame,
         )
         try:
             self.imu.wait_ready()
@@ -180,6 +183,7 @@ class RLWalk:
                 control_freq_hz=self.control_freq, start_paused=self.paused,
                 imu_upside_down=self.duck_config.imu_upside_down,
                 imu_i2c_bus=imu_i2c_bus, imu_max_age_ms=imu_max_age_ms,
+                imu_frame=imu_frame,
                 phase_period_steps=self.PRM.nb_steps_in_period,
                 phase_frequency_offset=self.phase_frequency_factor_offset,
                 cutoff_frequency_hz=cutoff_frequency, replay_obs=replay_obs is not None,
@@ -256,6 +260,9 @@ class RLWalk:
                 'imu_age_ms': (imu_received_ns-sample_end)/1e6 if sample_end is not None else None,
                 'imu_oldest_age_ms': (contacts_end_ns-imu_data['sample_start_monotonic_ns'])/1e6,
                 'gyro_rad_s': np.array(imu_data['gyro']).copy(),
+                'imu_frame': imu_data.get('imu_frame', 'native'),
+                'gyro_native_rad_s': imu_data.get('gyro_native_rad_s', imu_data['gyro']),
+                'accel_native_m_s2': imu_data.get('accel_native_m_s2', imu_data['accelero']),
                 'accelerometer_m_s2': np.array(imu_data['accelero']).copy(),
                 'joint_position_rad': dof_pos.copy(), 'joint_velocity_rad_s': dof_vel.copy(),
                 'contacts_left_right': list(feet_contacts),
@@ -338,6 +345,9 @@ class RLWalk:
                 imu_age_ms=(now_ns - data['sample_end_monotonic_ns']) / 1e6,
                 imu_oldest_age_ms=age_ns / 1e6,
                 gyro_rad_s=np.array(data['gyro']).copy(),
+                imu_frame=data.get('imu_frame', 'native'),
+                gyro_native_rad_s=data.get('gyro_native_rad_s', data['gyro']),
+                accel_native_m_s2=data.get('accel_native_m_s2', data['accelero']),
                 accelerometer_m_s2=np.array(data['accelero']).copy())
         return obs
 
@@ -777,6 +787,8 @@ if __name__ == "__main__":
                         help='Linux IMU bus (default 8); no fallback. Use 1 only after restoring hardware I2C.')
     parser.add_argument('--imu-max-age-ms', type=float, default=50,
                         help='Pause policy when IMU age from acquisition start exceeds this limit')
+    parser.add_argument('--imu-frame', choices=IMU_FRAMES, default='native',
+                        help='Rotation after BNO055 remap: yaw-plus-90 maps [x,y,z] to [-y,x,z]')
     parser.add_argument('--start-paused', action='store_true', default=None,
                         help='Wait for an explicit start command after initial pose setup')
 
@@ -814,9 +826,10 @@ if __name__ == "__main__":
             'cutoff_frequency_hz': args.cutoff_frequency,
             'web_command_timeout_s': args.web_command_timeout,
             'imu_i2c_bus': args.imu_i2c_bus, 'imu_max_age_ms': args.imu_max_age_ms,
+            'imu_frame': args.imu_frame, 'imu_frame_version': 1,
             'source_sha256': {
                 name: file_sha256(Path(__file__).resolve().parents[1]/'mini_bdx_runtime'/'mini_bdx_runtime'/name)
-                for name in ('raw_imu.py', 'imu_safety.py', 'web_controller.py', 'telemetry.py', 'runtime_budget.py', 'rustypot_position_hwi.py')
+                for name in ('raw_imu.py', 'imu_frame.py', 'imu_safety.py', 'web_controller.py', 'telemetry.py', 'runtime_budget.py', 'rustypot_position_hwi.py')
             },
         })
     with recorder as telemetry:
@@ -846,6 +859,7 @@ if __name__ == "__main__":
             telemetry=telemetry,
             imu_i2c_bus=args.imu_i2c_bus,
             imu_max_age_ms=args.imu_max_age_ms,
+            imu_frame=args.imu_frame,
             start_paused=args.start_paused,
             runtime_budget=budget,
         )
