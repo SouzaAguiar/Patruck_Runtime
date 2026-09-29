@@ -1,0 +1,65 @@
+{
+  "schema": 1,
+  "hardware": true,
+  "motors_controlled_by_script": false,
+  "gpio_bcm_left_right": [
+    22,
+    27
+  ],
+  "pull": "UP",
+  "active_low": true,
+  "duration_s": 3,
+  "frequency_hz": 20,
+  "repeats": 2,
+  "script_sha256": "1be2a0219df6f91050e2e84adcb5d91c7f36a0ec4abcfb0e35c74bd158876d0e",
+  "stages": [
+    [
+      "livres",
+      [
+        false,
+        false
+      ],
+      "Deixe os DOIS sensores livres, sem pressionar."
+    ],
+    [
+      "esquerdo",
+      [
+        true,
+        false
+      ],
+      "Pressione SOMENTE o sensor do pe ESQUERDO do robo."
+    ],
+    [
+      "livres_apos_esquerdo",
+      [
+        false,
+        false
+      ],
+      "Solte os DOIS sensores."
+    ],
+    [
+      "direito",
+      [
+        false,
+        true
+      ],
+      "Pressione SOMENTE o sensor do pe DIREITO do robo."
+    ],
+    [
+      "ambos",
+      [
+        true,
+        true
+      ],
+      "Pressione os DOIS sensores."
+    ],
+    [
+      "livres_final",
+      [
+        false,
+        false
+      ],
+      "Solte os DOIS sensores novamente."
+    ]
+  ]
+}

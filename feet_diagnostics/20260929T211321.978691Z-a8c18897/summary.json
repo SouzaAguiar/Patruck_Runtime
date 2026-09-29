@@ -1,0 +1,198 @@
+{
+  "state": "completed",
+  "stages": [
+    {
+      "name": "livres",
+      "repetition": 1,
+      "samples": 60,
+      "expected_left_right": [
+        false,
+        false
+      ],
+      "counts": {
+        "[False, False]": 60
+      },
+      "matching_fraction": 1.0,
+      "nominal_sample_coverage": 1.0,
+      "passed": true,
+      "criterion": ">=95% expected state, >=80% nominal samples; diagnostic triage only"
+    },
+    {
+      "name": "esquerdo",
+      "repetition": 1,
+      "samples": 60,
+      "expected_left_right": [
+        true,
+        false
+      ],
+      "counts": {
+        "[True, False]": 60
+      },
+      "matching_fraction": 1.0,
+      "nominal_sample_coverage": 1.0,
+      "passed": true,
+      "criterion": ">=95% expected state, >=80% nominal samples; diagnostic triage only"
+    },
+    {
+      "name": "livres_apos_esquerdo",
+      "repetition": 1,
+      "samples": 60,
+      "expected_left_right": [
+        false,
+        false
+      ],
+      "counts": {
+        "[False, False]": 60
+      },
+      "matching_fraction": 1.0,
+      "nominal_sample_coverage": 1.0,
+      "passed": true,
+      "criterion": ">=95% expected state, >=80% nominal samples; diagnostic triage only"
+    },
+    {
+      "name": "direito",
+      "repetition": 1,
+      "samples": 60,
+      "expected_left_right": [
+        false,
+        true
+      ],
+      "counts": {
+        "[False, True]": 60
+      },
+      "matching_fraction": 1.0,
+      "nominal_sample_coverage": 1.0,
+      "passed": true,
+      "criterion": ">=95% expected state, >=80% nominal samples; diagnostic triage only"
+    },
+    {
+      "name": "ambos",
+      "repetition": 1,
+      "samples": 60,
+      "expected_left_right": [
+        true,
+        true
+      ],
+      "counts": {
+        "[True, True]": 60
+      },
+      "matching_fraction": 1.0,
+      "nominal_sample_coverage": 1.0,
+      "passed": true,
+      "criterion": ">=95% expected state, >=80% nominal samples; diagnostic triage only"
+    },
+    {
+      "name": "livres_final",
+      "repetition": 1,
+      "samples": 60,
+      "expected_left_right": [
+        false,
+        false
+      ],
+      "counts": {
+        "[False, False]": 60
+      },
+      "matching_fraction": 1.0,
+      "nominal_sample_coverage": 1.0,
+      "passed": true,
+      "criterion": ">=95% expected state, >=80% nominal samples; diagnostic triage only"
+    },
+    {
+      "name": "livres",
+      "repetition": 2,
+      "samples": 60,
+      "expected_left_right": [
+        false,
+        false
+      ],
+      "counts": {
+        "[False, False]": 60
+      },
+      "matching_fraction": 1.0,
+      "nominal_sample_coverage": 1.0,
+      "passed": true,
+      "criterion": ">=95% expected state, >=80% nominal samples; diagnostic triage only"
+    },
+    {
+      "name": "esquerdo",
+      "repetition": 2,
+      "samples": 60,
+      "expected_left_right": [
+        true,
+        false
+      ],
+      "counts": {
+        "[True, False]": 60
+      },
+      "matching_fraction": 1.0,
+      "nominal_sample_coverage": 1.0,
+      "passed": true,
+      "criterion": ">=95% expected state, >=80% nominal samples; diagnostic triage only"
+    },
+    {
+      "name": "livres_apos_esquerdo",
+      "repetition": 2,
+      "samples": 60,
+      "expected_left_right": [
+        false,
+        false
+      ],
+      "counts": {
+        "[False, False]": 60
+      },
+      "matching_fraction": 1.0,
+      "nominal_sample_coverage": 1.0,
+      "passed": true,
+      "criterion": ">=95% expected state, >=80% nominal samples; diagnostic triage only"
+    },
+    {
+      "name": "direito",
+      "repetition": 2,
+      "samples": 60,
+      "expected_left_right": [
+        false,
+        true
+      ],
+      "counts": {
+        "[False, True]": 60
+      },
+      "matching_fraction": 1.0,
+      "nominal_sample_coverage": 1.0,
+      "passed": true,
+      "criterion": ">=95% expected state, >=80% nominal samples; diagnostic triage only"
+    },
+    {
+      "name": "ambos",
+      "repetition": 2,
+      "samples": 60,
+      "expected_left_right": [
+        true,
+        true
+      ],
+      "counts": {
+        "[True, True]": 60
+      },
+      "matching_fraction": 1.0,
+      "nominal_sample_coverage": 1.0,
+      "passed": true,
+      "criterion": ">=95% expected state, >=80% nominal samples; diagnostic triage only"
+    },
+    {
+      "name": "livres_final",
+      "repetition": 2,
+      "samples": 60,
+      "expected_left_right": [
+        false,
+        false
+      ],
+      "counts": {
+        "[False, False]": 60
+      },
+      "matching_fraction": 1.0,
+      "nominal_sample_coverage": 1.0,
+      "passed": true,
+      "criterion": ">=95% expected state, >=80% nominal samples; diagnostic triage only"
+    }
+  ],
+  "passed": true
+}

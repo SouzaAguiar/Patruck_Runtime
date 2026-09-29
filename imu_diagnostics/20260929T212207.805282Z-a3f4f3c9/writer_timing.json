@@ -1,0 +1,96 @@
+{
+  "clock": "monotonic_ns",
+  "capacity": 4096,
+  "total_batches": 11,
+  "omitted_batches": 0,
+  "batches": [
+    {
+      "chunk": 0,
+      "records": 1,
+      "start_monotonic_ns": 634013547929,
+      "serialize_write_end_monotonic_ns": 634014686888,
+      "fsync_end_monotonic_ns": 634025389241,
+      "end_monotonic_ns": 634038661699
+    },
+    {
+      "chunk": 1,
+      "records": 43,
+      "start_monotonic_ns": 635038897128,
+      "serialize_write_end_monotonic_ns": 635053538963,
+      "fsync_end_monotonic_ns": 635079751327,
+      "end_monotonic_ns": 635091672743
+    },
+    {
+      "chunk": 2,
+      "records": 53,
+      "start_monotonic_ns": 636092751506,
+      "serialize_write_end_monotonic_ns": 636112337303,
+      "fsync_end_monotonic_ns": 636137423729,
+      "end_monotonic_ns": 636151710876
+    },
+    {
+      "chunk": 3,
+      "records": 53,
+      "start_monotonic_ns": 637153077555,
+      "serialize_write_end_monotonic_ns": 637180562160,
+      "fsync_end_monotonic_ns": 637206220566,
+      "end_monotonic_ns": 637222213964
+    },
+    {
+      "chunk": 4,
+      "records": 53,
+      "start_monotonic_ns": 638223932674,
+      "serialize_write_end_monotonic_ns": 638251500039,
+      "fsync_end_monotonic_ns": 638278625686,
+      "end_monotonic_ns": 638291491790
+    },
+    {
+      "chunk": 5,
+      "records": 53,
+      "start_monotonic_ns": 639293330239,
+      "serialize_write_end_monotonic_ns": 639321250469,
+      "fsync_end_monotonic_ns": 639347333198,
+      "end_monotonic_ns": 639360595136
+    },
+    {
+      "chunk": 6,
+      "records": 53,
+      "start_monotonic_ns": 640362394262,
+      "serialize_write_end_monotonic_ns": 640390547305,
+      "fsync_end_monotonic_ns": 640418255035,
+      "end_monotonic_ns": 640432257963
+    },
+    {
+      "chunk": 7,
+      "records": 53,
+      "start_monotonic_ns": 641434024484,
+      "serialize_write_end_monotonic_ns": 641462020235,
+      "fsync_end_monotonic_ns": 641489479580,
+      "end_monotonic_ns": 641502778184
+    },
+    {
+      "chunk": 8,
+      "records": 54,
+      "start_monotonic_ns": 642504664965,
+      "serialize_write_end_monotonic_ns": 642532604883,
+      "fsync_end_monotonic_ns": 642557820163,
+      "end_monotonic_ns": 642571167309
+    },
+    {
+      "chunk": 9,
+      "records": 53,
+      "start_monotonic_ns": 643573069610,
+      "serialize_write_end_monotonic_ns": 643600577549,
+      "fsync_end_monotonic_ns": 643626142621,
+      "end_monotonic_ns": 643640145549
+    },
+    {
+      "chunk": 10,
+      "records": 36,
+      "start_monotonic_ns": 644256089941,
+      "serialize_write_end_monotonic_ns": 644272097193,
+      "fsync_end_monotonic_ns": 644292125073,
+      "end_monotonic_ns": 644310815921
+    }
+  ]
+}
