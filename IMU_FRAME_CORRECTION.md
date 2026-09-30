@@ -1,5 +1,12 @@
 # Correção de orientação IMU por software
 
+**Validação de 30/09/2026: `yaw-plus-90` ainda não está aprovada para caminhada.**
+As coletas têm divergências de sinal entre poses e movimentos confirmados pelo
+operador. Manter este modo como candidato de diagnóstico. O roteiro anterior
+indicava os sinais estáticos de aceleração ao contrário; os esperados abaixo
+foram corrigidos por comparação com MuJoCo. Não corrigir sinais individualmente
+para tentar aprovar uma rotação inconsistente.
+
 O novo modo `yaw-plus-90` transforma os vetores já remapeados pelo BNO055:
 
 ```text
@@ -48,7 +55,7 @@ python diagnose_imu.py --i2c-bus 8 --imu-frame yaw-plus-90 --duration 10 --outpu
 
 No primeiro, nivelado; no segundo, frente do corpo desce; no terceiro, lado
 direito do corpo desce. A resposta corrigida esperada é aumento principal de
-X no nose-down, diminuição principal de Y no right-down, Z positivo.
+X NEGATIVO no nose-down, aumento principal de Y no right-down, Z positivo.
 
 ## Depois conferir giro durante a gravação
 

@@ -175,12 +175,45 @@ def probe_startup(sensor, capture, recorder, mode, attempts=10, required_good=3)
                        '. Bytes e tentativas preservados na pasta da sessao.')
 
 
-def acquire(sensor, capture, recorder, duration, frequency, reread=True, imu_frame='native'):
+def frame_test_plan():
+    plan = [{'name': 'baseline', 'duration_s': 5,
+             'instruction': 'Mantenha o corpo nivelado e parado.'}]
+    movements = [('pitch', 'Baixe lentamente a FRENTE do corpo inteiro.'),
+                 ('roll', 'Baixe lentamente o lado DIREITO do corpo inteiro.'),
+                 ('yaw', 'Vire lentamente para a ESQUERDA do robo, mantendo nivelado.')]
+    for repetition in (1, 2):
+        for axis, instruction in movements:
+            for phase, cue in [('ready', 'Nivelado e parado. Prepare o proximo movimento: '+instruction),
+                               ('outbound', instruction),
+                               ('hold', 'Mantenha a posicao atingida, sem mover.'),
+                               ('return', 'Volte lentamente a posicao inicial.'),
+                               ('rest', 'Mantenha nivelado e parado.')]:
+                plan.append({'name': f'{axis}-{repetition}-{phase}', 'axis': axis,
+                             'repetition': repetition, 'phase': phase,
+                             'duration_s': 3, 'instruction': cue})
+    offset = 0
+    for stage in plan:
+        stage['start_s'] = offset
+        offset += stage['duration_s']
+        stage['end_s'] = offset
+    return plan
+
+
+def acquire(sensor, capture, recorder, duration, frequency, reread=True, imu_frame='native', plan=None):
     started = time.monotonic()
     count = anomalies = overruns = 0
     last_report = started
+    stage_index = -1
     while time.monotonic()-started < duration:
         tick = time.monotonic()
+        stage_name = None
+        if plan:
+            while stage_index+1 < len(plan) and tick-started >= plan[stage_index+1]['start_s']:
+                stage_index += 1
+                stage = plan[stage_index]
+                recorder.record('guided_stage', **stage, actual_elapsed_s=tick-started)
+                print('\a'+stage['name']+': '+stage['instruction'], flush=True)
+            stage_name = plan[stage_index]['name']
         primary = read_pair(sensor, capture)
         second = read_pair(sensor, capture) if primary['abnormal'] and reread else None
         count += 1
@@ -195,7 +228,7 @@ def acquire(sensor, capture, recorder, duration, frequency, reread=True, imu_fra
         overruns += int(elapsed > 1/frequency)
         recorder.record('imu_sample', index=count-1, elapsed_s=tick-started,
                         primary=primary, reread=second, acquisition_ms=elapsed*1000,
-                        frame_preview=preview)
+                        frame_preview=preview, guided_stage=stage_name)
         if recorder.error is not None or recorder.dropped:
             raise RuntimeError('Diagnostic recording failed or dropped samples; inspect status.json')
         if time.monotonic()-last_report >= 10:
@@ -331,6 +364,8 @@ def main():
     parser.add_argument('--no-reread', action='store_true')
     parser.add_argument('--imu-frame', choices=IMU_FRAMES, default='native',
                         help='Record a software frame preview alongside untouched driver readings')
+    parser.add_argument('--guided-frame-test', action='store_true',
+                        help='One continuous 95-second session: two guided rounds of pitch/roll/yaw; overrides duration')
     args = parser.parse_args()
     if args.summarize:
         print(json.dumps(summarize(args.summarize), indent=2, ensure_ascii=False))
@@ -342,6 +377,11 @@ def main():
         parser.error('invalid I2C address')
     if args.i2c_bus is not None and args.i2c_bus < 0:
         parser.error('i2c-bus must be nonnegative')
+    plan = frame_test_plan() if args.guided_frame_test else None
+    if plan:
+        args.duration = plan[-1]['end_s']
+        print('Teste guiado: 95 segundos. Leia o roteiro antes; mova o corpo somente nas instrucoes.')
+        input('Robo sustentado, nivelado, servos sem alimentacao e runtime encerrado? ENTER para preparar a IMU: ')
     # Refuse an implicit change of mounting/calibration from the runtime setup.
     config = json.loads(args.config.read_text(encoding='utf-8'))
     calibration = None
@@ -371,6 +411,7 @@ def main():
         'imu_frame': args.imu_frame, 'imu_frame_version': 1,
         'imu_frame_sha256': file_sha256(ROOT/'mini_bdx_runtime/mini_bdx_runtime/imu_frame.py'),
         'host_i2c': host_i2c_info(),
+        'guided_frame_test': args.guided_frame_test, 'guided_plan': plan,
     })
     try:
         with recorder:
@@ -395,7 +436,8 @@ def main():
             sensor.i2c_device = capture
             probe_startup(sensor, capture, recorder, mode)
             print('COLETA INICIADA: '+args.label+'; frame='+args.imu_frame, flush=True)
-            result = acquire(sensor, capture, recorder, args.duration, args.frequency, not args.no_reread, args.imu_frame)
+            result = acquire(sensor, capture, recorder, args.duration, args.frequency,
+                             not args.no_reread, args.imu_frame, plan=plan)
             recorder.record('acquisition_complete', **result)
             recorder.record('imu_registers', stage='final', registers=register_snapshot(sensor))
     except KeyboardInterrupt:
