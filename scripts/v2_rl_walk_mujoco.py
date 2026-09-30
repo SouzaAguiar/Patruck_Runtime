@@ -788,7 +788,7 @@ if __name__ == "__main__":
     parser.add_argument('--imu-max-age-ms', type=float, default=50,
                         help='Pause policy when IMU age from acquisition start exceeds this limit')
     parser.add_argument('--imu-frame', choices=IMU_FRAMES, default='native',
-                        help='Rotation after BNO055 remap: yaw-plus-90 maps [x,y,z] to [-y,x,z]')
+                        help='After BNO055 remap: yaw-plus-90=[-y,x,z]; yaw-minus-90=[y,-x,z]')
     parser.add_argument('--start-paused', action='store_true', default=None,
                         help='Wait for an explicit start command after initial pose setup')
 

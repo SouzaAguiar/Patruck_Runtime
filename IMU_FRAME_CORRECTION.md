@@ -1,5 +1,9 @@
 # Correção de orientação IMU por software
 
+**Revisão após a coleta guiada de 30/09:** a candidata indicada passou a ser
+`yaw-minus-90`. Use o novo roteiro `IMU_FRAME_CORRECTION_V2.md`. As instruções
+abaixo documentam a primeira candidata e não devem ser repetidas nesta etapa.
+
 **Validação de 30/09/2026: `yaw-plus-90` ainda não está aprovada para caminhada.**
 As coletas têm divergências de sinal entre poses e movimentos confirmados pelo
 operador. Manter este modo como candidato de diagnóstico. O roteiro anterior

@@ -1,7 +1,7 @@
 """Pure frame rotation AFTER the existing BNO055 remap; no hardware access."""
 import numpy as np
 
-IMU_FRAMES = ('native', 'yaw-plus-90')
+IMU_FRAMES = ('native', 'yaw-plus-90', 'yaw-minus-90')
 
 
 def rotate_vector(vector, frame='native'):
@@ -12,7 +12,9 @@ def rotate_vector(vector, frame='native'):
         raise ValueError('IMU vector must contain three finite values')
     if frame == 'native':
         return value.copy()
-    return np.array([-value[1], value[0], value[2]])
+    if frame == 'yaw-plus-90':
+        return np.array([-value[1], value[0], value[2]])
+    return np.array([value[1], -value[0], value[2]])
 
 
 def transform_sample(sample, frame='native'):
