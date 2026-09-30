@@ -1,0 +1,366 @@
+{
+  "schema": 1,
+  "label": "frame-v2-guided",
+  "started_utc": "20260930T213918.933808Z",
+  "writer_timing_schema": 1,
+  "clock_anchor": {
+    "unix_ns": 1790804358934816112,
+    "monotonic_ns": 1455150666575
+  },
+  "python": "3.11.2 (main, May 12 2026, 05:17:27) [GCC 12.2.0]",
+  "platform": "Linux-6.12.96+rpt-rpi-v8-aarch64-with-glibc2.36",
+  "flush_seconds": 1.0,
+  "queue_capacity_records": 512,
+  "writer_yield_ms": 0,
+  "nonfinite_values": "null",
+  "settings": {
+    "diagnostic_schema": 2,
+    "duration_s": 95,
+    "frequency_hz": 50,
+    "i2c_bus": 8,
+    "i2c_backend": "extended_bus",
+    "address": 41,
+    "mode": "ndof",
+    "imu_upside_down": false,
+    "config_sha256": "073d713035d6b7c6e1a2fa84c7903d7da854fa92cb6d41a10453f1624548223b",
+    "calibration_sha256": "b524772f4a82c02c5e03fc9c445d206348ad7a5e1c8947c38fe1dfd0a3533623",
+    "driver_sha256": "4341572848fcc9f6a2708a0abb1fc2e71e21f6538382ee8b3f074957c13c8f4f",
+    "packages": {
+      "adafruit-circuitpython-bno055": "5.4.13",
+      "adafruit-circuitpython-busdevice": "5.2.17",
+      "adafruit-circuitpython-register": "1.12.1",
+      "Adafruit-Blinka": "9.2.0",
+      "adafruit-extended-bus": "1.0.2"
+    },
+    "script_sha256": "be6a3f4483fa2bcb22ecba6f33eca0f448148a2bfbd8137afd8b8aa84dfc9b69",
+    "reread_on_anomaly": true,
+    "motors_controlled_by_script": false,
+    "imu_frame": "yaw-plus-90",
+    "imu_frame_version": 1,
+    "imu_frame_sha256": "0e0153d2c7195523f828cf6c0521fc1643c08d77a343a7d1b87c1f4172e2d1af",
+    "host_i2c": {
+      "raspberry_model": "Raspberry Pi Zero 2 W Rev 1.0",
+      "device_tree_i2c_clock_hz": {
+        "/proc/device-tree/soc/i2c@7e804000/clock-frequency": 100000,
+        "/proc/device-tree/soc/i2c@7e205000/clock-frequency": 100000,
+        "/proc/device-tree/soc/i2c@7e805000/clock-frequency": 100000
+      },
+      "adapters": {
+        "i2c-10": "i2c-11-mux (chan_id 1)",
+        "i2c-8": "8.i2c",
+        "i2c-11": "bcm2835 (i2c@7e205000)",
+        "i2c-0": "i2c-11-mux (chan_id 0)"
+      }
+    },
+    "guided_frame_test": true,
+    "guided_plan": [
+      {
+        "name": "baseline",
+        "duration_s": 5,
+        "instruction": "Mantenha o corpo nivelado e parado.",
+        "start_s": 0,
+        "end_s": 5
+      },
+      {
+        "name": "pitch-1-ready",
+        "axis": "pitch",
+        "repetition": 1,
+        "phase": "ready",
+        "duration_s": 3,
+        "instruction": "Nivelado e parado. Prepare o proximo movimento: Baixe lentamente a FRENTE do corpo inteiro.",
+        "start_s": 5,
+        "end_s": 8
+      },
+      {
+        "name": "pitch-1-outbound",
+        "axis": "pitch",
+        "repetition": 1,
+        "phase": "outbound",
+        "duration_s": 3,
+        "instruction": "Baixe lentamente a FRENTE do corpo inteiro.",
+        "start_s": 8,
+        "end_s": 11
+      },
+      {
+        "name": "pitch-1-hold",
+        "axis": "pitch",
+        "repetition": 1,
+        "phase": "hold",
+        "duration_s": 3,
+        "instruction": "Mantenha a posicao atingida, sem mover.",
+        "start_s": 11,
+        "end_s": 14
+      },
+      {
+        "name": "pitch-1-return",
+        "axis": "pitch",
+        "repetition": 1,
+        "phase": "return",
+        "duration_s": 3,
+        "instruction": "Volte lentamente a posicao inicial.",
+        "start_s": 14,
+        "end_s": 17
+      },
+      {
+        "name": "pitch-1-rest",
+        "axis": "pitch",
+        "repetition": 1,
+        "phase": "rest",
+        "duration_s": 3,
+        "instruction": "Mantenha nivelado e parado.",
+        "start_s": 17,
+        "end_s": 20
+      },
+      {
+        "name": "roll-1-ready",
+        "axis": "roll",
+        "repetition": 1,
+        "phase": "ready",
+        "duration_s": 3,
+        "instruction": "Nivelado e parado. Prepare o proximo movimento: Baixe lentamente o lado DIREITO do corpo inteiro.",
+        "start_s": 20,
+        "end_s": 23
+      },
+      {
+        "name": "roll-1-outbound",
+        "axis": "roll",
+        "repetition": 1,
+        "phase": "outbound",
+        "duration_s": 3,
+        "instruction": "Baixe lentamente o lado DIREITO do corpo inteiro.",
+        "start_s": 23,
+        "end_s": 26
+      },
+      {
+        "name": "roll-1-hold",
+        "axis": "roll",
+        "repetition": 1,
+        "phase": "hold",
+        "duration_s": 3,
+        "instruction": "Mantenha a posicao atingida, sem mover.",
+        "start_s": 26,
+        "end_s": 29
+      },
+      {
+        "name": "roll-1-return",
+        "axis": "roll",
+        "repetition": 1,
+        "phase": "return",
+        "duration_s": 3,
+        "instruction": "Volte lentamente a posicao inicial.",
+        "start_s": 29,
+        "end_s": 32
+      },
+      {
+        "name": "roll-1-rest",
+        "axis": "roll",
+        "repetition": 1,
+        "phase": "rest",
+        "duration_s": 3,
+        "instruction": "Mantenha nivelado e parado.",
+        "start_s": 32,
+        "end_s": 35
+      },
+      {
+        "name": "yaw-1-ready",
+        "axis": "yaw",
+        "repetition": 1,
+        "phase": "ready",
+        "duration_s": 3,
+        "instruction": "Nivelado e parado. Prepare o proximo movimento: Vire lentamente para a ESQUERDA do robo, mantendo nivelado.",
+        "start_s": 35,
+        "end_s": 38
+      },
+      {
+        "name": "yaw-1-outbound",
+        "axis": "yaw",
+        "repetition": 1,
+        "phase": "outbound",
+        "duration_s": 3,
+        "instruction": "Vire lentamente para a ESQUERDA do robo, mantendo nivelado.",
+        "start_s": 38,
+        "end_s": 41
+      },
+      {
+        "name": "yaw-1-hold",
+        "axis": "yaw",
+        "repetition": 1,
+        "phase": "hold",
+        "duration_s": 3,
+        "instruction": "Mantenha a posicao atingida, sem mover.",
+        "start_s": 41,
+        "end_s": 44
+      },
+      {
+        "name": "yaw-1-return",
+        "axis": "yaw",
+        "repetition": 1,
+        "phase": "return",
+        "duration_s": 3,
+        "instruction": "Volte lentamente a posicao inicial.",
+        "start_s": 44,
+        "end_s": 47
+      },
+      {
+        "name": "yaw-1-rest",
+        "axis": "yaw",
+        "repetition": 1,
+        "phase": "rest",
+        "duration_s": 3,
+        "instruction": "Mantenha nivelado e parado.",
+        "start_s": 47,
+        "end_s": 50
+      },
+      {
+        "name": "pitch-2-ready",
+        "axis": "pitch",
+        "repetition": 2,
+        "phase": "ready",
+        "duration_s": 3,
+        "instruction": "Nivelado e parado. Prepare o proximo movimento: Baixe lentamente a FRENTE do corpo inteiro.",
+        "start_s": 50,
+        "end_s": 53
+      },
+      {
+        "name": "pitch-2-outbound",
+        "axis": "pitch",
+        "repetition": 2,
+        "phase": "outbound",
+        "duration_s": 3,
+        "instruction": "Baixe lentamente a FRENTE do corpo inteiro.",
+        "start_s": 53,
+        "end_s": 56
+      },
+      {
+        "name": "pitch-2-hold",
+        "axis": "pitch",
+        "repetition": 2,
+        "phase": "hold",
+        "duration_s": 3,
+        "instruction": "Mantenha a posicao atingida, sem mover.",
+        "start_s": 56,
+        "end_s": 59
+      },
+      {
+        "name": "pitch-2-return",
+        "axis": "pitch",
+        "repetition": 2,
+        "phase": "return",
+        "duration_s": 3,
+        "instruction": "Volte lentamente a posicao inicial.",
+        "start_s": 59,
+        "end_s": 62
+      },
+      {
+        "name": "pitch-2-rest",
+        "axis": "pitch",
+        "repetition": 2,
+        "phase": "rest",
+        "duration_s": 3,
+        "instruction": "Mantenha nivelado e parado.",
+        "start_s": 62,
+        "end_s": 65
+      },
+      {
+        "name": "roll-2-ready",
+        "axis": "roll",
+        "repetition": 2,
+        "phase": "ready",
+        "duration_s": 3,
+        "instruction": "Nivelado e parado. Prepare o proximo movimento: Baixe lentamente o lado DIREITO do corpo inteiro.",
+        "start_s": 65,
+        "end_s": 68
+      },
+      {
+        "name": "roll-2-outbound",
+        "axis": "roll",
+        "repetition": 2,
+        "phase": "outbound",
+        "duration_s": 3,
+        "instruction": "Baixe lentamente o lado DIREITO do corpo inteiro.",
+        "start_s": 68,
+        "end_s": 71
+      },
+      {
+        "name": "roll-2-hold",
+        "axis": "roll",
+        "repetition": 2,
+        "phase": "hold",
+        "duration_s": 3,
+        "instruction": "Mantenha a posicao atingida, sem mover.",
+        "start_s": 71,
+        "end_s": 74
+      },
+      {
+        "name": "roll-2-return",
+        "axis": "roll",
+        "repetition": 2,
+        "phase": "return",
+        "duration_s": 3,
+        "instruction": "Volte lentamente a posicao inicial.",
+        "start_s": 74,
+        "end_s": 77
+      },
+      {
+        "name": "roll-2-rest",
+        "axis": "roll",
+        "repetition": 2,
+        "phase": "rest",
+        "duration_s": 3,
+        "instruction": "Mantenha nivelado e parado.",
+        "start_s": 77,
+        "end_s": 80
+      },
+      {
+        "name": "yaw-2-ready",
+        "axis": "yaw",
+        "repetition": 2,
+        "phase": "ready",
+        "duration_s": 3,
+        "instruction": "Nivelado e parado. Prepare o proximo movimento: Vire lentamente para a ESQUERDA do robo, mantendo nivelado.",
+        "start_s": 80,
+        "end_s": 83
+      },
+      {
+        "name": "yaw-2-outbound",
+        "axis": "yaw",
+        "repetition": 2,
+        "phase": "outbound",
+        "duration_s": 3,
+        "instruction": "Vire lentamente para a ESQUERDA do robo, mantendo nivelado.",
+        "start_s": 83,
+        "end_s": 86
+      },
+      {
+        "name": "yaw-2-hold",
+        "axis": "yaw",
+        "repetition": 2,
+        "phase": "hold",
+        "duration_s": 3,
+        "instruction": "Mantenha a posicao atingida, sem mover.",
+        "start_s": 86,
+        "end_s": 89
+      },
+      {
+        "name": "yaw-2-return",
+        "axis": "yaw",
+        "repetition": 2,
+        "phase": "return",
+        "duration_s": 3,
+        "instruction": "Volte lentamente a posicao inicial.",
+        "start_s": 89,
+        "end_s": 92
+      },
+      {
+        "name": "yaw-2-rest",
+        "axis": "yaw",
+        "repetition": 2,
+        "phase": "rest",
+        "duration_s": 3,
+        "instruction": "Mantenha nivelado e parado.",
+        "start_s": 92,
+        "end_s": 95
+      }
+    ]
+  }
+}
