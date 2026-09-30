@@ -1,0 +1,136 @@
+{
+  "clock": "monotonic_ns",
+  "capacity": 4096,
+  "total_batches": 16,
+  "omitted_batches": 0,
+  "batches": [
+    {
+      "chunk": 0,
+      "records": 1,
+      "start_monotonic_ns": 398094452494,
+      "serialize_write_end_monotonic_ns": 398095619588,
+      "fsync_end_monotonic_ns": 398101694125,
+      "end_monotonic_ns": 398107698349
+    },
+    {
+      "chunk": 1,
+      "records": 43,
+      "start_monotonic_ns": 399107909501,
+      "serialize_write_end_monotonic_ns": 399125797586,
+      "fsync_end_monotonic_ns": 399135573928,
+      "end_monotonic_ns": 399144348021
+    },
+    {
+      "chunk": 2,
+      "records": 52,
+      "start_monotonic_ns": 400145566745,
+      "serialize_write_end_monotonic_ns": 400164919374,
+      "fsync_end_monotonic_ns": 400174136126,
+      "end_monotonic_ns": 400180482748
+    },
+    {
+      "chunk": 3,
+      "records": 51,
+      "start_monotonic_ns": 401181962007,
+      "serialize_write_end_monotonic_ns": 401212764584,
+      "fsync_end_monotonic_ns": 401222646342,
+      "end_monotonic_ns": 401230699124
+    },
+    {
+      "chunk": 4,
+      "records": 52,
+      "start_monotonic_ns": 402232478919,
+      "serialize_write_end_monotonic_ns": 402263943423,
+      "fsync_end_monotonic_ns": 402276057387,
+      "end_monotonic_ns": 402284825175
+    },
+    {
+      "chunk": 5,
+      "records": 52,
+      "start_monotonic_ns": 403286803892,
+      "serialize_write_end_monotonic_ns": 403318773138,
+      "fsync_end_monotonic_ns": 403328380516,
+      "end_monotonic_ns": 403339212332
+    },
+    {
+      "chunk": 6,
+      "records": 53,
+      "start_monotonic_ns": 404341244867,
+      "serialize_write_end_monotonic_ns": 404372142329,
+      "fsync_end_monotonic_ns": 404382900758,
+      "end_monotonic_ns": 404390086135
+    },
+    {
+      "chunk": 7,
+      "records": 52,
+      "start_monotonic_ns": 405392105197,
+      "serialize_write_end_monotonic_ns": 405422845676,
+      "fsync_end_monotonic_ns": 405436344285,
+      "end_monotonic_ns": 405443631380
+    },
+    {
+      "chunk": 8,
+      "records": 52,
+      "start_monotonic_ns": 406445642283,
+      "serialize_write_end_monotonic_ns": 406477470530,
+      "fsync_end_monotonic_ns": 406489179747,
+      "end_monotonic_ns": 406496981586
+    },
+    {
+      "chunk": 9,
+      "records": 52,
+      "start_monotonic_ns": 407499132665,
+      "serialize_write_end_monotonic_ns": 407530948722,
+      "fsync_end_monotonic_ns": 407541280687,
+      "end_monotonic_ns": 407550901603
+    },
+    {
+      "chunk": 10,
+      "records": 53,
+      "start_monotonic_ns": 408552988953,
+      "serialize_write_end_monotonic_ns": 408583615206,
+      "fsync_end_monotonic_ns": 408595168117,
+      "end_monotonic_ns": 408602130937
+    },
+    {
+      "chunk": 11,
+      "records": 52,
+      "start_monotonic_ns": 409604162945,
+      "serialize_write_end_monotonic_ns": 409634597162,
+      "fsync_end_monotonic_ns": 409646957840,
+      "end_monotonic_ns": 409655494527
+    },
+    {
+      "chunk": 12,
+      "records": 52,
+      "start_monotonic_ns": 410657526610,
+      "serialize_write_end_monotonic_ns": 410689168544,
+      "fsync_end_monotonic_ns": 410699883061,
+      "end_monotonic_ns": 410710367316
+    },
+    {
+      "chunk": 13,
+      "records": 53,
+      "start_monotonic_ns": 411712417497,
+      "serialize_write_end_monotonic_ns": 411742763011,
+      "fsync_end_monotonic_ns": 411752843355,
+      "end_monotonic_ns": 411762685000
+    },
+    {
+      "chunk": 14,
+      "records": 52,
+      "start_monotonic_ns": 412764801145,
+      "serialize_write_end_monotonic_ns": 412794630142,
+      "fsync_end_monotonic_ns": 412806955453,
+      "end_monotonic_ns": 412814155408
+    },
+    {
+      "chunk": 15,
+      "records": 30,
+      "start_monotonic_ns": 413326050942,
+      "serialize_write_end_monotonic_ns": 413340368403,
+      "fsync_end_monotonic_ns": 413347606067,
+      "end_monotonic_ns": 413357007446
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "label": "frame-v1-nose-down",
+  "started_utc": "20260930T211751.870471Z",
+  "writer_timing_schema": 1,
+  "clock_anchor": {
+    "unix_ns": 1790803071871450531,
+    "monotonic_ns": 168087301463
+  },
+  "python": "3.11.2 (main, May 12 2026, 05:17:27) [GCC 12.2.0]",
+  "platform": "Linux-6.12.96+rpt-rpi-v8-aarch64-with-glibc2.36",
+  "flush_seconds": 1.0,
+  "queue_capacity_records": 512,
+  "writer_yield_ms": 0,
+  "nonfinite_values": "null",
+  "settings": {
+    "diagnostic_schema": 2,
+    "duration_s": 10.0,
+    "frequency_hz": 50,
+    "i2c_bus": 8,
+    "i2c_backend": "extended_bus",
+    "address": 41,
+    "mode": "ndof",
+    "imu_upside_down": false,
+    "config_sha256": "073d713035d6b7c6e1a2fa84c7903d7da854fa92cb6d41a10453f1624548223b",
+    "calibration_sha256": "b524772f4a82c02c5e03fc9c445d206348ad7a5e1c8947c38fe1dfd0a3533623",
+    "driver_sha256": "4341572848fcc9f6a2708a0abb1fc2e71e21f6538382ee8b3f074957c13c8f4f",
+    "packages": {
+      "adafruit-circuitpython-bno055": "5.4.13",
+      "adafruit-circuitpython-busdevice": "5.2.17",
+      "adafruit-circuitpython-register": "1.12.1",
+      "Adafruit-Blinka": "9.2.0",
+      "adafruit-extended-bus": "1.0.2"
+    },
+    "script_sha256": "55b1f256e90d626affe7f5e7f8998606d3a35ecdb1efc4a4d38110798215e18b",
+    "reread_on_anomaly": true,
+    "motors_controlled_by_script": false,
+    "imu_frame": "yaw-plus-90",
+    "imu_frame_version": 1,
+    "imu_frame_sha256": "0e0153d2c7195523f828cf6c0521fc1643c08d77a343a7d1b87c1f4172e2d1af",
+    "host_i2c": {
+      "raspberry_model": "Raspberry Pi Zero 2 W Rev 1.0",
+      "device_tree_i2c_clock_hz": {
+        "/proc/device-tree/soc/i2c@7e804000/clock-frequency": 100000,
+        "/proc/device-tree/soc/i2c@7e205000/clock-frequency": 100000,
+        "/proc/device-tree/soc/i2c@7e805000/clock-frequency": 100000
+      },
+      "adapters": {
+        "i2c-10": "i2c-11-mux (chan_id 1)",
+        "i2c-8": "8.i2c",
+        "i2c-11": "bcm2835 (i2c@7e205000)",
+        "i2c-0": "i2c-11-mux (chan_id 0)"
+      }
+    }
+  }
+}
