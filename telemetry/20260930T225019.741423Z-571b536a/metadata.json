@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "label": "test",
+  "started_utc": "20260930T225019.741423Z",
+  "writer_timing_schema": 1,
+  "clock_anchor": {
+    "unix_ns": 1790808619742416640,
+    "monotonic_ns": 1476946983209
+  },
+  "python": "3.11.2 (main, May 12 2026, 05:17:27) [GCC 12.2.0]",
+  "platform": "Linux-6.12.96+rpt-rpi-v8-aarch64-with-glibc2.36",
+  "flush_seconds": 1.0,
+  "queue_capacity_records": 512,
+  "writer_yield_ms": 1.0,
+  "nonfinite_values": "null",
+  "settings": {
+    "runtime_gc": "bounded",
+    "active_window_s": 10.0,
+    "imu_fault_diagnostics_version": 1,
+    "imu_selection_version": 2,
+    "imu_selection_max_wait_ms": 5,
+    "imu_selection_reserve_ms": 10,
+    "max_rss_growth_mb": 64,
+    "min_available_mb": 64,
+    "model_name": "BEST_WALK_ONNX_2.onnx",
+    "model_sha256": "3c606f9381a1710cc8fecdb7442787dcbfce3ee9bc02a6f1224774ab2b3a1067",
+    "runtime_sha256": "7235e8f9871abc3743e72897aabae8e79f3b7ebe3d517bef43441399f8874c7c",
+    "config_sha256": "073d713035d6b7c6e1a2fa84c7903d7da854fa92cb6d41a10453f1624548223b",
+    "control_source": "web",
+    "control_freq_hz": 50,
+    "action_scale": 0.25,
+    "pid_requested": [
+      30,
+      0,
+      0
+    ],
+    "pitch_bias_requested_deg": 0.02,
+    "cutoff_frequency_hz": null,
+    "web_command_timeout_s": 0.6,
+    "imu_i2c_bus": 8,
+    "imu_max_age_ms": 50.0,
+    "imu_frame": "yaw-minus-90",
+    "imu_frame_version": 1,
+    "source_sha256": {
+      "raw_imu.py": "c28bbfb7a4a4d7d1697c69f8a78164ce4796aada8ffbccf1f52ef4c0b27b00d4",
+      "imu_frame.py": "056fa4619b93d66e235fd5dcd9309e9fdc225e160bdbef05147188b0c344d42f",
+      "imu_safety.py": "50772c76a7069367130f1f88687b3ca7bda8008324b34542ac9a414051c86504",
+      "web_controller.py": "81964d73a6167ea59740c8660045e7657380071f46d6da4f84eefec87923293d",
+      "telemetry.py": "03505f5e7e036426a3eb54b983b7f99a82ce540eaeb8aa21bd84a093a80eca0d",
+      "runtime_budget.py": "61f7606a2b4cb5a2f9b480fbe6052b2c98c403522e03d8862085be27c0692112",
+      "rustypot_position_hwi.py": "ec15bcb576dd17402e4e8092264f7116d2fdf44381f704398f9cac206607ae46"
+    }
+  }
+}
