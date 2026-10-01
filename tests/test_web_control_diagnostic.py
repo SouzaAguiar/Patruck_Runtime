@@ -47,6 +47,17 @@ class FakeImu:
         self.stopped = True
 
 
+def test_make_imu_forwards_frame_without_hardware(monkeypatch):
+    captured = {}
+    class Base:
+        def __init__(self, rate, **kwargs):
+            captured.update(rate=rate, **kwargs)
+    monkeypatch.setitem(sys.modules, "mini_bdx_runtime.raw_imu", SimpleNamespace(Imu=Base))
+    diag.make_imu(8, .05, {"imu_upside_down": False}, [], imu_frame="yaw-minus-90")
+    assert captured == dict(rate=50, upside_down=False, i2c_bus=8,
+                            max_age_s=.05, imu_frame="yaw-minus-90")
+
+
 @pytest.mark.parametrize("gc_policy", ["default", "defer"])
 @pytest.mark.parametrize("mode", ["web", "imu", "onnx", "telemetry"])
 def test_modes_record_and_continue_after_fault(tmp_path, monkeypatch, mode, gc_policy):
@@ -72,9 +83,11 @@ def test_modes_record_and_continue_after_fault(tmp_path, monkeypatch, mode, gc_p
     output = tmp_path/"output"
     result = diag.main(["--mode", mode, "--duration", "1", "--max-age-ms", "10000", "--output", str(output),
                         "--config", str(tmp_path/"config.json"), "--onnx-model", str(tmp_path/"fake.onnx"),
-                        "--gc-policy", gc_policy, "--writer-yield-ms",
+                        "--imu-frame", "yaw-minus-90", "--gc-policy", gc_policy, "--writer-yield-ms",
                         "1" if mode == "telemetry" and gc_policy == "defer" else "0"])
     folder = next(output.iterdir())
+    metadata = json.loads((folder/"metadata.json").read_text())
+    assert metadata["settings"]["imu_frame"] == (None if mode == "web" else "yaw-minus-90")
     rows = [json.loads(l) for f in sorted(folder.glob("chunk-*.jsonl")) for l in f.read_text().splitlines()]
     cycles = [r for r in rows if r["kind"] == "diagnostic_cycle"]
     assert len(cycles) >= 3

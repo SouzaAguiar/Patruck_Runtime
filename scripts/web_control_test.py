@@ -13,6 +13,7 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "mini_bdx_runtime"))
+from mini_bdx_runtime.imu_frame import IMU_FRAMES
 
 
 def memory_snapshot():
@@ -156,7 +157,7 @@ def inspect_sample(imu, sample, limit_s, stage):
                             used_sample_index=sample.get("sample_index") if sample else None)
 
 
-def make_imu(bus, limit_s, config, producer_events, transaction_trace=None):
+def make_imu(bus, limit_s, config, producer_events, transaction_trace=None, imu_frame='native'):
     from mini_bdx_runtime.raw_imu import Imu
 
     class DiagnosticImu(Imu):
@@ -171,7 +172,7 @@ def make_imu(bus, limit_s, config, producer_events, transaction_trace=None):
             super().imu_worker()
 
     return DiagnosticImu(50, upside_down=config.get("imu_upside_down", False),
-                         i2c_bus=bus, max_age_s=limit_s)
+                         i2c_bus=bus, max_age_s=limit_s, imu_frame=imu_frame)
 
 
 def main(argv=None):
@@ -188,6 +189,8 @@ def main(argv=None):
     parser.add_argument("--duration", type=float, default=120)
     parser.add_argument("--i2c-bus", type=int, default=8)
     parser.add_argument("--max-age-ms", type=float, default=50)
+    parser.add_argument('--imu-frame', choices=IMU_FRAMES, default='native',
+                        help='Use the same software IMU rotation as the runtime')
     parser.add_argument("--config", type=Path, default=Path.home()/"duck_config.json")
     parser.add_argument("--onnx-model", type=Path)
     parser.add_argument("--payload-profile", type=Path,
@@ -263,6 +266,7 @@ def main(argv=None):
                                           records=len(rows)))
 
     metadata = dict(mode=args.mode, i2c_bus=args.i2c_bus if use_imu else None,
+                    imu_frame=args.imu_frame if use_imu else None,
                     max_age_ms=args.max_age_ms, camera=args.camera, frequency_hz=50,
                     onnx_threads=args.onnx_threads, motors_controlled_by_script=False,
                     observations="synthetic joints/history; real IMU and web commands when enabled",
@@ -278,7 +282,7 @@ def main(argv=None):
                     gc_policy=args.gc_policy, max_rss_growth_mb=args.max_rss_growth_mb,
                     min_available_mb=args.min_available_mb, writer_yield_ms=args.writer_yield_ms,
                     source_sha256={n:file_sha256(ROOT/"mini_bdx_runtime"/"mini_bdx_runtime"/n)
-                                   for n in ("raw_imu.py", "imu_safety.py", "web_controller.py", "telemetry.py")})
+                                   for n in ("raw_imu.py", "imu_frame.py", "imu_safety.py", "web_controller.py", "telemetry.py")})
     recorder = TimedRecorder(args.output, label="web-diagnostic-"+args.mode, metadata=metadata)
     imu = None
     buffered = []
@@ -301,7 +305,7 @@ def main(argv=None):
             if len(inp.shape) not in (1, 2):
                 raise ValueError("Expected ONNX input shape [101] or [1,101]")
         if use_imu:
-            imu = make_imu(args.i2c_bus, args.max_age_ms/1000, config, events, transaction_trace)
+            imu = make_imu(args.i2c_bus, args.max_age_ms/1000, config, events, transaction_trace, args.imu_frame)
             imu.wait_ready()
         controller = WebController(command_freq=20, port=args.port, token=args.token, camera=args.camera)
         memory_guard.start()
