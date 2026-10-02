@@ -1,0 +1,302 @@
+[
+  {
+    "monotonic_ns": 305932691474,
+    "rss_bytes": 88145920,
+    "available_bytes": 244207616
+  },
+  {
+    "monotonic_ns": 306935133806,
+    "rss_bytes": 89026560,
+    "available_bytes": 244072448
+  },
+  {
+    "monotonic_ns": 307948150393,
+    "rss_bytes": 89325568,
+    "available_bytes": 243773440
+  },
+  {
+    "monotonic_ns": 308964049618,
+    "rss_bytes": 89612288,
+    "available_bytes": 243781632
+  },
+  {
+    "monotonic_ns": 309977509359,
+    "rss_bytes": 89841664,
+    "available_bytes": 243056640
+  },
+  {
+    "monotonic_ns": 310992312509,
+    "rss_bytes": 90058752,
+    "available_bytes": 243200000
+  },
+  {
+    "monotonic_ns": 312002064700,
+    "rss_bytes": 90202112,
+    "available_bytes": 243216384
+  },
+  {
+    "monotonic_ns": 313012402431,
+    "rss_bytes": 90345472,
+    "available_bytes": 242126848
+  },
+  {
+    "monotonic_ns": 314026386974,
+    "rss_bytes": 90529792,
+    "available_bytes": 242180096
+  },
+  {
+    "monotonic_ns": 315042420194,
+    "rss_bytes": 90738688,
+    "available_bytes": 241836032
+  },
+  {
+    "monotonic_ns": 316062963878,
+    "rss_bytes": 90939392,
+    "available_bytes": 241971200
+  },
+  {
+    "monotonic_ns": 317068433829,
+    "rss_bytes": 91078656,
+    "available_bytes": 241987584
+  },
+  {
+    "monotonic_ns": 318082129376,
+    "rss_bytes": 91213824,
+    "available_bytes": 241504256
+  },
+  {
+    "monotonic_ns": 319097883810,
+    "rss_bytes": 91406336,
+    "available_bytes": 241795072
+  },
+  {
+    "monotonic_ns": 320109714121,
+    "rss_bytes": 91594752,
+    "available_bytes": 241319936
+  },
+  {
+    "monotonic_ns": 321127364647,
+    "rss_bytes": 91811840,
+    "available_bytes": 241348608
+  },
+  {
+    "monotonic_ns": 322132730943,
+    "rss_bytes": 91930624,
+    "available_bytes": 241344512
+  },
+  {
+    "monotonic_ns": 323145898354,
+    "rss_bytes": 92069888,
+    "available_bytes": 240996352
+  },
+  {
+    "monotonic_ns": 324155766494,
+    "rss_bytes": 92241920,
+    "available_bytes": 240914432
+  },
+  {
+    "monotonic_ns": 325156817773,
+    "rss_bytes": 92442624,
+    "available_bytes": 240447488
+  },
+  {
+    "monotonic_ns": 326172515370,
+    "rss_bytes": 92651520,
+    "available_bytes": 240541696
+  },
+  {
+    "monotonic_ns": 327176333641,
+    "rss_bytes": 92737536,
+    "available_bytes": 240607232
+  },
+  {
+    "monotonic_ns": 328189291942,
+    "rss_bytes": 92913664,
+    "available_bytes": 239796224
+  },
+  {
+    "monotonic_ns": 329206494149,
+    "rss_bytes": 93069312,
+    "available_bytes": 239910912
+  },
+  {
+    "monotonic_ns": 330219804010,
+    "rss_bytes": 93278208,
+    "available_bytes": 238542848
+  },
+  {
+    "monotonic_ns": 331235422400,
+    "rss_bytes": 93470720,
+    "available_bytes": 238538752
+  },
+  {
+    "monotonic_ns": 332242878211,
+    "rss_bytes": 93577216,
+    "available_bytes": 238563328
+  },
+  {
+    "monotonic_ns": 333262533916,
+    "rss_bytes": 93736960,
+    "available_bytes": 238219264
+  },
+  {
+    "monotonic_ns": 334278075766,
+    "rss_bytes": 93904896,
+    "available_bytes": 238370816
+  },
+  {
+    "monotonic_ns": 335292227946,
+    "rss_bytes": 94097408,
+    "available_bytes": 238030848
+  },
+  {
+    "monotonic_ns": 336305302645,
+    "rss_bytes": 94302208,
+    "available_bytes": 235999232
+  },
+  {
+    "monotonic_ns": 337312303010,
+    "rss_bytes": 94404608,
+    "available_bytes": 236048384
+  },
+  {
+    "monotonic_ns": 338330911288,
+    "rss_bytes": 94564352,
+    "available_bytes": 235704320
+  },
+  {
+    "monotonic_ns": 339340602819,
+    "rss_bytes": 94724096,
+    "available_bytes": 235855872
+  },
+  {
+    "monotonic_ns": 340358409689,
+    "rss_bytes": 94928896,
+    "available_bytes": 235544576
+  },
+  {
+    "monotonic_ns": 341373456986,
+    "rss_bytes": 95133696,
+    "available_bytes": 235642880
+  },
+  {
+    "monotonic_ns": 342381034162,
+    "rss_bytes": 95219712,
+    "available_bytes": 235581440
+  },
+  {
+    "monotonic_ns": 343395497972,
+    "rss_bytes": 95383552,
+    "available_bytes": 235188224
+  },
+  {
+    "monotonic_ns": 344409011962,
+    "rss_bytes": 95547392,
+    "available_bytes": 235220992
+  },
+  {
+    "monotonic_ns": 345425672877,
+    "rss_bytes": 95760384,
+    "available_bytes": 234909696
+  },
+  {
+    "monotonic_ns": 346441933454,
+    "rss_bytes": 95952896,
+    "available_bytes": 234917888
+  },
+  {
+    "monotonic_ns": 347446499720,
+    "rss_bytes": 96038912,
+    "available_bytes": 235032576
+  },
+  {
+    "monotonic_ns": 348461455767,
+    "rss_bytes": 96206848,
+    "available_bytes": 234692608
+  },
+  {
+    "monotonic_ns": 349477806958,
+    "rss_bytes": 96370688,
+    "available_bytes": 234725376
+  },
+  {
+    "monotonic_ns": 350492135408,
+    "rss_bytes": 96583680,
+    "available_bytes": 234369024
+  },
+  {
+    "monotonic_ns": 351506108940,
+    "rss_bytes": 96763904,
+    "available_bytes": 234369024
+  },
+  {
+    "monotonic_ns": 352512654438,
+    "rss_bytes": 96858112,
+    "available_bytes": 234532864
+  },
+  {
+    "monotonic_ns": 353524735628,
+    "rss_bytes": 97030144,
+    "available_bytes": 234041344
+  },
+  {
+    "monotonic_ns": 354544589344,
+    "rss_bytes": 97189888,
+    "available_bytes": 234315776
+  },
+  {
+    "monotonic_ns": 355559047280,
+    "rss_bytes": 97398784,
+    "available_bytes": 233869312
+  },
+  {
+    "monotonic_ns": 356574011867,
+    "rss_bytes": 97591296,
+    "available_bytes": 234102784
+  },
+  {
+    "monotonic_ns": 357579163462,
+    "rss_bytes": 97677312,
+    "available_bytes": 234033152
+  },
+  {
+    "monotonic_ns": 358593067277,
+    "rss_bytes": 97837056,
+    "available_bytes": 233684992
+  },
+  {
+    "monotonic_ns": 359611239120,
+    "rss_bytes": 98017280,
+    "available_bytes": 233840640
+  },
+  {
+    "monotonic_ns": 360624774252,
+    "rss_bytes": 98213888,
+    "available_bytes": 233361408
+  },
+  {
+    "monotonic_ns": 361635802529,
+    "rss_bytes": 98390016,
+    "available_bytes": 233594880
+  },
+  {
+    "monotonic_ns": 362645880836,
+    "rss_bytes": 98516992,
+    "available_bytes": 233443328
+  },
+  {
+    "monotonic_ns": 363661459002,
+    "rss_bytes": 98656256,
+    "available_bytes": 233086976
+  },
+  {
+    "monotonic_ns": 364678306064,
+    "rss_bytes": 98852864,
+    "available_bytes": 233242624
+  },
+  {
+    "monotonic_ns": 365692581221,
+    "rss_bytes": 99057664,
+    "available_bytes": 232902656
+  }
+]

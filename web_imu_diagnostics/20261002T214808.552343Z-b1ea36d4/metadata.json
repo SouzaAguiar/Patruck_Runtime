@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "label": "web-diagnostic-onnx",
+  "started_utc": "20261002T214808.552343Z",
+  "writer_timing_schema": 1,
+  "clock_anchor": {
+    "unix_ns": 1790977688553345099,
+    "monotonic_ns": 212663170613
+  },
+  "python": "3.11.2 (main, May 12 2026, 05:17:27) [GCC 12.2.0]",
+  "platform": "Linux-6.12.96+rpt-rpi-v8-aarch64-with-glibc2.36",
+  "flush_seconds": 1.0,
+  "queue_capacity_records": 512,
+  "writer_yield_ms": 0,
+  "nonfinite_values": "null",
+  "settings": {
+    "mode": "onnx",
+    "i2c_bus": 8,
+    "imu_frame": "yaw-minus-90",
+    "max_age_ms": 50.0,
+    "camera": false,
+    "frequency_hz": 50,
+    "onnx_threads": 0,
+    "motors_controlled_by_script": false,
+    "observations": "synthetic joints/history; real IMU and web commands when enabled",
+    "model_sha256": "3c606f9381a1710cc8fecdb7442787dcbfce3ee9bc02a6f1224774ab2b3a1067",
+    "config_sha256": "073d713035d6b7c6e1a2fa84c7903d7da854fa92cb6d41a10453f1624548223b",
+    "calibration_sha256": "b524772f4a82c02c5e03fc9c445d206348ad7a5e1c8947c38fe1dfd0a3533623",
+    "script_sha256": "ab020bb97f9f1d6cc77197e001811ab34eedc65e69818137842f97553c8589ed",
+    "payload_profile_sha256": "3ff783a423ace5eeca41577f28a76ed7294241b84be7399471bb57348cfc6784",
+    "payload_source_session": "20260922T165048.187033Z-e5de0b6b",
+    "payload_reference_cycle_bytes": 5929,
+    "instrumentation": "preallocated I2C/GC traces; bounded GC policy and RSS sampling",
+    "gc_enabled": true,
+    "gc_thresholds": [
+      700,
+      10,
+      10
+    ],
+    "gc_policy": "defer",
+    "max_rss_growth_mb": 64,
+    "min_available_mb": 64,
+    "writer_yield_ms": 0,
+    "source_sha256": {
+      "raw_imu.py": "c28bbfb7a4a4d7d1697c69f8a78164ce4796aada8ffbccf1f52ef4c0b27b00d4",
+      "imu_frame.py": "056fa4619b93d66e235fd5dcd9309e9fdc225e160bdbef05147188b0c344d42f",
+      "imu_safety.py": "50772c76a7069367130f1f88687b3ca7bda8008324b34542ac9a414051c86504",
+      "web_controller.py": "81964d73a6167ea59740c8660045e7657380071f46d6da4f84eefec87923293d",
+      "telemetry.py": "03505f5e7e036426a3eb54b983b7f99a82ce540eaeb8aa21bd84a093a80eca0d"
+    }
+  }
+}
