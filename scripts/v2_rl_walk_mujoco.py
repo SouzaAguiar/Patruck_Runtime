@@ -11,6 +11,7 @@ from mini_bdx_runtime.raw_imu import Imu
 from mini_bdx_runtime.imu_frame import IMU_FRAMES
 from mini_bdx_runtime.imu_safety import ImuDataError, check_sample
 from mini_bdx_runtime.runtime_budget import RuntimeBudget, RuntimeBudgetError
+from mini_bdx_runtime.runtime_trace import runtime_trace_session
 from mini_bdx_runtime.poly_reference_motion import PolyReferenceMotion
 from mini_bdx_runtime.feet_contacts import FeetContacts
 from mini_bdx_runtime.eyes import Eyes
@@ -55,9 +56,15 @@ class RLWalk:
         start_paused=None,
         runtime_budget=None,
         imu_frame='native',
+        timing_trace=None,
+        stationary_test=False,
+        test_duration_s=0,
     ):
 
         self.runtime_budget = runtime_budget
+        self.timing_trace = timing_trace
+        self.stationary_test = stationary_test
+        self.test_duration_s = test_duration_s
         self.runtime_fault = None
         self.telemetry = telemetry
         self.telemetry_observation = None
@@ -104,6 +111,7 @@ class RLWalk:
             i2c_bus=imu_i2c_bus,
             max_age_s=self.imu_max_age_s,
             imu_frame=imu_frame,
+            timing_trace=timing_trace,
         )
         try:
             self.imu.wait_ready()
@@ -184,6 +192,9 @@ class RLWalk:
                 imu_upside_down=self.duck_config.imu_upside_down,
                 imu_i2c_bus=imu_i2c_bus, imu_max_age_ms=imu_max_age_ms,
                 imu_frame=imu_frame,
+                stationary_test=stationary_test,
+                test_duration_s=test_duration_s,
+                runtime_timing_trace=timing_trace is not None,
                 phase_period_steps=self.PRM.nb_steps_in_period,
                 phase_frequency_offset=self.phase_frequency_factor_offset,
                 cutoff_frequency_hz=cutoff_frequency, replay_obs=replay_obs is not None,
@@ -382,11 +393,29 @@ class RLWalk:
             self.cycle_diagnostics = {}
         self.cycle_diagnostics.update(times)
         self.cycle_diagnostics['stage'] = stage
-        self.cycle_diagnostics[stage+'_ns'] = time.monotonic_ns()
+        now_ns = time.monotonic_ns()
+        self.cycle_diagnostics[stage+'_ns'] = now_ns
+        self._trace_control(stage, now_ns)
+
+    def _trace_control(self, event, now_ns=None):
+        trace = getattr(self, 'timing_trace', None)
+        if trace is not None:
+            sample = self.observation_imu
+            trace.control_mark(event, time.monotonic_ns() if now_ns is None else now_ns,
+                               self.cycle_diagnostics.get('attempt', -1),
+                               sample.get('sample_index', -1) if sample is not None else -1)
+
+    def _guard_stationary_commands(self):
+        if getattr(self, 'stationary_test', False) and np.any(np.asarray(self.last_commands) != 0):
+            if self.telemetry is not None:
+                self.telemetry.record('stationary_command_rejected', requested_commands=self.last_commands)
+            self.last_commands = [0.0] * 7
+            self._pause_for_runtime(RuntimeBudgetError('Teste parado: comando nao zero; centralize e reconheca a pausa'))
 
     def _pause_for_imu(self, error):
         # Capture before restoring GC, printing or recording the pause.
         detected_ns = time.monotonic_ns()
+        self._trace_control('imu_fault', detected_ns)
         detail = dict(getattr(self, 'cycle_diagnostics', {}))
         sample = self.observation_imu
         used = ({key: sample.get(key) for key in (
@@ -409,6 +438,7 @@ class RLWalk:
         self._publish_control_status()
 
     def _pause_for_runtime(self, error):
+        self._trace_control('runtime_guard_pause')
         self.runtime_fault = str(error)
         self.imu_fault_acknowledged = False
         self.paused = True
@@ -490,7 +520,13 @@ class RLWalk:
             self.start()
             print("Starting")
             start_t = time.time()
+            test_duration = getattr(self, 'test_duration_s', 0)
+            test_deadline_ns = time.monotonic_ns()+int(test_duration*1e9) if test_duration else None
             while True:
+                if test_deadline_ns is not None and time.monotonic_ns() >= test_deadline_ns:
+                    if self.telemetry is not None:
+                        self.telemetry.record('stationary_test_complete', duration_s=test_duration)
+                    break
                 left_trigger = 0
                 right_trigger = 0
                 t = time.time()
@@ -500,6 +536,7 @@ class RLWalk:
                 self.cycle_diagnostics = dict(attempt=attempt, next_action_cycle=i,
                                               cycle_start_ns=cycle_start_ns, stage='commands')
                 self.observation_imu = None
+                self._trace_control('cycle_start', cycle_start_ns)
                 attempt += 1
 
                 if self.commands:
@@ -550,11 +587,14 @@ class RLWalk:
                         else:
                             print("UNPAUSE")
 
+                self._guard_stationary_commands()
+                self._trace_control('commands_end')
                 if self.telemetry is not None and self.paused != previous_paused:
                     self.telemetry.record('pause_changed', paused=self.paused)
                 previous_paused = self.paused
                 self._publish_control_status()
                 if self.paused:
+                    self._trace_control('paused')
                     if self.runtime_budget is not None and self.runtime_budget.needs_maintenance:
                         try:
                             self.runtime_budget.maintain()
@@ -664,6 +704,7 @@ class RLWalk:
                                               motor_targets_rad=candidate_targets)
                     raise
                 write_end_ns = time.monotonic_ns()
+                self._trace_control('motor_write_end', write_end_ns)
                 # Only executed actions enter the next observation's history.
                 self.last_last_last_action = self.last_last_action.copy()
                 self.last_last_action = self.last_action.copy()
@@ -676,6 +717,7 @@ class RLWalk:
                 self.imitation_phase = np.array([np.cos(angle), np.sin(angle)])
 
                 if self.telemetry is not None:
+                    self._trace_control('telemetry_begin')
                     self.telemetry.record(
                         'cycle', cycle=i, cycle_start_monotonic_ns=cycle_start_ns,
                         previous_cycle_dt_ms=cycle_dt_ms, commands=self.last_commands,
@@ -693,8 +735,10 @@ class RLWalk:
                         loop_work_before_logging_ms=(write_end_ns-cycle_start_ns)/1e6,
                         phase_frequency=self.phase_frequency_factor+self.phase_frequency_factor_offset,
                     )
+                    self._trace_control('telemetry_end')
 
                 i += 1
+                self._trace_control('cycle_work_end')
 
                 took = time.time() - t
                 # print("Full loop took", took, "fps : ", np.around(1 / took, 2))
@@ -799,7 +843,23 @@ if __name__ == "__main__":
     parser.add_argument('--max-rss-growth-mb', type=float, default=64)
     parser.add_argument('--min-available-mb', type=float, default=64)
     parser.add_argument('--telemetry-writer-yield-ms', type=float, default=1)
+    parser.add_argument('--runtime-trace-seconds', type=float, default=0,
+                        help='Optional numeric timing rings (0=off, up to 300 s retention); saved on exit')
+    parser.add_argument('--stationary-test', action='store_true',
+                        help='Pause on any nonzero external command; servos and policy still run at zero commands')
+    parser.add_argument('--test-duration-s', type=float, default=0,
+                        help='Stationary test wall time after motor setup (0=manual exit, maximum 120 s)')
     args = parser.parse_args()
+    if not np.isfinite(args.runtime_trace_seconds) or not 0 <= args.runtime_trace_seconds <= 300:
+        parser.error('--runtime-trace-seconds must be in [0, 300]')
+    if args.runtime_trace_seconds and not args.telemetry_dir:
+        parser.error('--runtime-trace-seconds requires --telemetry-dir')
+    if args.runtime_trace_seconds and not 1 <= args.control_freq <= 200:
+        parser.error('traced control frequency must be in [1, 200]')
+    if not np.isfinite(args.test_duration_s) or not 0 <= args.test_duration_s <= 120:
+        parser.error('--test-duration-s must be in [0, 120]')
+    if args.test_duration_s and not args.stationary_test:
+        parser.error('--test-duration-s requires --stationary-test')
     # Validate resources/settings before constructing the hardware runtime.
     budget = (RuntimeBudget(args.active_window_s, args.max_rss_growth_mb, args.min_available_mb)
               if args.runtime_gc == 'bounded' else None)
@@ -812,6 +872,10 @@ if __name__ == "__main__":
                                      writer_yield_ms=args.telemetry_writer_yield_ms, metadata={
             'runtime_gc': args.runtime_gc, 'active_window_s': args.active_window_s,
             'imu_fault_diagnostics_version': 1,
+            'runtime_timing_trace_schema': 1 if args.runtime_trace_seconds else None,
+            'runtime_trace_seconds': args.runtime_trace_seconds,
+            'stationary_test': args.stationary_test,
+            'test_duration_s': args.test_duration_s,
             'imu_selection_version': 2,
             'imu_selection_max_wait_ms': 5,
             'imu_selection_reserve_ms': min(10, args.imu_max_age_ms / 2),
@@ -829,10 +893,13 @@ if __name__ == "__main__":
             'imu_frame': args.imu_frame, 'imu_frame_version': 1,
             'source_sha256': {
                 name: file_sha256(Path(__file__).resolve().parents[1]/'mini_bdx_runtime'/'mini_bdx_runtime'/name)
-                for name in ('raw_imu.py', 'imu_frame.py', 'imu_safety.py', 'web_controller.py', 'telemetry.py', 'runtime_budget.py', 'rustypot_position_hwi.py')
+                for name in ('raw_imu.py', 'imu_frame.py', 'imu_safety.py', 'web_controller.py', 'telemetry.py', 'runtime_budget.py', 'runtime_trace.py', 'rustypot_position_hwi.py')
             },
         })
-    with recorder as telemetry:
+    with recorder as telemetry, runtime_trace_session(
+        telemetry.folder if telemetry is not None else None,
+        args.runtime_trace_seconds, args.control_freq,
+    ) as timing_trace:
         if budget is not None:
             budget.recorder = telemetry
         rl_walk = RLWalk(
@@ -862,6 +929,9 @@ if __name__ == "__main__":
             imu_frame=args.imu_frame,
             start_paused=args.start_paused,
             runtime_budget=budget,
+            timing_trace=timing_trace,
+            stationary_test=args.stationary_test,
+            test_duration_s=args.test_duration_s,
         )
         print("Done instantiating RLWalk")
         rl_walk.run()

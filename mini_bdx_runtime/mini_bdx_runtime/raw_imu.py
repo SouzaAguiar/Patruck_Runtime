@@ -11,11 +11,12 @@ from mini_bdx_runtime.imu_frame import IMU_FRAMES, transform_sample
 class Imu:
     def __init__(
         self, sampling_freq, user_pitch_bias=0, calibrate=False, upside_down=True,
-        i2c_bus=None, max_age_s=.05, imu_frame='native',
+        i2c_bus=None, max_age_s=.05, imu_frame='native', timing_trace=None,
     ):
         if imu_frame not in IMU_FRAMES:
             raise ValueError('Unknown IMU frame: ' + str(imu_frame))
         self.imu_frame = imu_frame
+        self.timing_trace = timing_trace
         self.sampling_freq = sampling_freq
         self.calibrate = calibrate
         if not np.isfinite(sampling_freq) or sampling_freq <= 0:
@@ -30,6 +31,8 @@ class Imu:
         try:
             self.imu = adafruit_bno055.BNO055_I2C(self.bus,address=0x29)
             self._configure_sensor(upside_down)
+            if timing_trace is not None:
+                self.imu.i2c_device = timing_trace.wrap_i2c(self.imu.i2c_device)
             self._thread = Thread(target=self.imu_worker, daemon=True)
             self._thread.start()
         except BaseException:
@@ -139,25 +142,38 @@ class Imu:
 
     def imu_worker(self):
         sample_index = 0
+        trace = getattr(self, 'timing_trace', None)
+        due_ns = 0
         try:
             while not self._stop_event.is_set():
                 started = time.monotonic()
                 sample_start_ns = time.monotonic_ns()
+                if trace is not None:
+                    trace.imu.add(sample_start_ns, 0, sample_index, sample_start_ns, due_ns)
                 try:
                     gyro = np.asarray(self.imu.gyro, dtype=float)
                     accelero = np.asarray(self.imu.acceleration, dtype=float)
                     if accelero.shape == (3,):
                         accelero = accelero.copy()
                         accelero[0] -= self.x_offset
+                    sample_end_ns = time.monotonic_ns()
+                    if trace is not None:
+                        trace.imu.add(sample_end_ns, 1, sample_index, sample_start_ns, due_ns)
                     self.samples.publish(transform_sample({
                         'gyro': gyro, 'accelero': accelero,
                         'sample_start_monotonic_ns': sample_start_ns,
-                        'sample_end_monotonic_ns': time.monotonic_ns(),
+                        'sample_end_monotonic_ns': sample_end_ns,
                         'sample_index': sample_index,
                     }, getattr(self, 'imu_frame', 'native')))
+                    if trace is not None:
+                        trace.imu.add(time.monotonic_ns(), 2, sample_index, sample_start_ns, due_ns)
                 except Exception as exc:
                     self.samples.fail(f'{type(exc).__name__}: {exc}')
+                    if trace is not None:
+                        trace.imu.add(time.monotonic_ns(), 3, sample_index, sample_start_ns, due_ns)
                 sample_index += 1
+                if trace is not None:
+                    due_ns = sample_start_ns + int(1e9/self.sampling_freq)
                 self._stop_event.wait(max(0, 1/self.sampling_freq-(time.monotonic()-started)))
         finally:
             self.samples.fail('IMU: leitura encerrada')
