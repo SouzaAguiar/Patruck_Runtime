@@ -214,7 +214,9 @@ def test_launcher_dry_run_checks_teacher_and_launches_no_hardware(tmp_path, monk
     library.mkdir(parents=True)
     for name in ('imu_calib_data.pkl','polynomial_coefficients.pkl','v2_rl_walk_mujoco.py'):
         (scripts/name).write_bytes(b'test file')
+    (scripts/'v2_rl_walk_mujoco.py').write_text('IMU_SELECTION_VERSION = 3\n')
     (library/'runtime_trace.py').write_bytes(b'test file')
+    (library/'imu_safety.py').write_text('class ImuSampleStaleError: pass\n')
     config, model = tmp_path/'duck_config.json', tmp_path/'teacher.onnx'
     config.write_text('{}')
     model.write_bytes(b'mock teacher')
@@ -226,6 +228,10 @@ def test_launcher_dry_run_checks_teacher_and_launches_no_hardware(tmp_path, monk
     output = capsys.readouterr().out
     assert '--stationary-test' in output and '--imu-frame yaw-minus-90' in output
     assert '--active-window-s 10' in output and '--test-duration-s 90' in output
+    (library/'imu_safety.py').write_text('class ImuDataError: pass\n')
+    with pytest.raises(SystemExit):
+        module.main(['--onnx-model',str(model),'--config',str(config),'--dry-run'])
+    (library/'imu_safety.py').write_text('class ImuSampleStaleError: pass\n')
     model.write_bytes(b'wrong teacher')
     with pytest.raises(SystemExit):
         module.main(['--onnx-model',str(model),'--config',str(config),'--dry-run'])

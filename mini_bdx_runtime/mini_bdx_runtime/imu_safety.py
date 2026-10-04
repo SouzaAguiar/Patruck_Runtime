@@ -9,6 +9,14 @@ class ImuDataError(RuntimeError):
     pass
 
 
+class ImuSampleStaleError(ImuDataError):
+    """A structurally valid cached sample expired; no rejected vectors are exposed."""
+    def __init__(self, age_ms, limit_ms, sample_index=None):
+        self.age_ms = age_ms
+        self.sample_index = sample_index
+        super().__init__(f'IMU: amostra antiga ({age_ms:.1f} ms; limite {limit_ms:.1f} ms)')
+
+
 def open_i2c(bus_number=None):
     if bus_number is not None:
         if bus_number < 0:
@@ -54,8 +62,6 @@ def check_sample(sample, max_age_s, now_ns=None):
         raise ImuDataError('IMU: timestamps invalidos')
     # Gyro is read first. Age from start conservatively covers both measurements,
     # including time blocked inside I2C, not only time since delivery.
-    if (now-start)/1e9 > max_age_s:
-        raise ImuDataError(f'IMU: amostra antiga ({(now-start)/1e6:.1f} ms; limite {max_age_s*1000:.1f} ms)')
     for name, limit in (('gyro', 35.0), ('accelero', 160.0)):
         try:
             vector = np.asarray(sample.get(name), dtype=float)
@@ -65,6 +71,8 @@ def check_sample(sample, max_age_s, now_ns=None):
             raise ImuDataError(f'IMU: vetor {name} ausente ou nao finito')
         if (np.abs(vector) > limit).any():
             raise ImuDataError(f'IMU: {name} fora da faixa ({vector.tolist()})')
+    if (now-start)/1e9 > max_age_s:
+        raise ImuSampleStaleError((now-start)/1e6, max_age_s*1000, sample.get('sample_index'))
     return sample
 
 

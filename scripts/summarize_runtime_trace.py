@@ -75,12 +75,19 @@ def summarize(folder):
                            gc_overlapping_fault=[g for g in gc_intervals if g['start_ns'] <= point <= g['end_ns']],
                            writer_overlapping_fault=[b for b in batches if b['start_monotonic_ns'] <= point <= b['end_monotonic_ns']]))
     cycles = [r for r in records if r['kind']=='cycle']
+    metadata_path = folder/'metadata.json'
+    settings = json.loads(metadata_path.read_text(encoding='utf-8'))['settings'] if metadata_path.is_file() else {}
+    recovery_fields = bool(cycles) and all('imu_selection_stale_polls' in c['sensors'] for c in cycles)
     return dict(schema=1, session=folder.name,
                 warning='Timing correlations do not prove causality; traces are bounded and may omit older events.',
                 overwritten={name:trace[name]['overwritten'] for name in ('imu','i2c','control','gc')},
                 allocated_numeric_bytes=trace['allocated_numeric_bytes'],
                 status=json.loads((folder/'status.json').read_text(encoding='utf-8')) if (folder/'status.json').is_file() else None,
                 cycle_count=len(cycles), nonzero_command_cycles=sum(any(r['commands']) for r in cycles),
+                imu_selection_version=settings.get('imu_selection_version'), recovery_fields_available=recovery_fields,
+                initial_expired_sample_recovered_cycles=sum(bool(c['sensors']['imu_initial_stale_after_joints']) for c in cycles) if recovery_fields else None,
+                expired_cache_wait_recovered_cycles=sum(c['sensors']['imu_selection_stale_polls']>0 for c in cycles) if recovery_fields else None,
+                imu_age_at_motor_write_start_ms=stats([(c['motor_write_start_monotonic_ns']-c['sensors']['imu_sample_start_monotonic_ns'])/1e6 for c in cycles]),
                 record_kinds=dict(Counter(r['kind'] for r in records)),
                 acquisition_ms=stats([(s['read_end']-s['start_ns'])/1e6 for s in samples if 'read_end' in s]),
                 publication_after_read_ms=stats([(s['published']-s['read_end'])/1e6 for s in samples if 'published' in s and 'read_end' in s]),

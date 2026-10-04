@@ -1,5 +1,6 @@
 """Preflight and launch a bounded real-runtime stationary timing test on the Pi."""
 import argparse
+import ast
 import hashlib
 from pathlib import Path
 import shlex
@@ -23,7 +24,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--onnx-model', type=Path, required=True)
     parser.add_argument('--config', type=Path, default=Path.home()/'duck_config.json')
-    parser.add_argument('--label', default='imu-runtime-trace-a')
+    parser.add_argument('--label', default='imu-runtime-refresh-a')
     parser.add_argument('--output', type=Path, default=ROOT/'telemetry')
     parser.add_argument('--serial-port', default='/dev/ttyACM0')
     parser.add_argument('--web-port', type=int, default=8080)
@@ -32,10 +33,19 @@ def main(argv=None):
     args = parser.parse_args(argv)
     model, config = args.onnx_model.expanduser().resolve(), args.config.expanduser().resolve()
     required = [model, config, SCRIPTS/'imu_calib_data.pkl', SCRIPTS/'polynomial_coefficients.pkl',
-                SCRIPTS/'v2_rl_walk_mujoco.py', ROOT/'mini_bdx_runtime/mini_bdx_runtime/runtime_trace.py']
+                SCRIPTS/'v2_rl_walk_mujoco.py', ROOT/'mini_bdx_runtime/mini_bdx_runtime/runtime_trace.py',
+                ROOT/'mini_bdx_runtime/mini_bdx_runtime/imu_safety.py']
     for path in required:
         if not path.is_file():
             parser.error('Arquivo necessario nao encontrado: '+str(path))
+    tree = ast.parse((SCRIPTS/'v2_rl_walk_mujoco.py').read_text(encoding='utf-8'))
+    version = next((ast.literal_eval(node.value) for node in tree.body if isinstance(node, ast.Assign)
+                    and any(isinstance(t, ast.Name) and t.id=='IMU_SELECTION_VERSION' for t in node.targets)), None)
+    if version != 3:
+        parser.error('Runtime precisa da selecao IMU versao 3; extraia o pacote atualizado')
+    safety = ast.parse((ROOT/'mini_bdx_runtime/mini_bdx_runtime/imu_safety.py').read_text(encoding='utf-8'))
+    if not any(isinstance(node, ast.ClassDef) and node.name=='ImuSampleStaleError' for node in safety.body):
+        parser.error('imu_safety.py precisa da mesma revisao v3; extraia o pacote inteiro')
     if digest(model) != EXPECTED_TEACHER:
         parser.error('ONNX diferente do teacher validado; confira o caminho do modelo')
     command = [sys.executable, str(SCRIPTS/'v2_rl_walk_mujoco.py'),
@@ -48,7 +58,7 @@ def main(argv=None):
                '--telemetry-writer-yield-ms', '1', '--telemetry-dir', str(args.output.expanduser().resolve()),
                '--telemetry-label', args.label, '--runtime-trace-seconds', '120',
                '--stationary-test', '--test-duration-s', '90']
-    print('Teacher verificado. Config SHA-256: '+digest(config), flush=True)
+    print('Teacher e selecao IMU v3 verificados. Config SHA-256: '+digest(config), flush=True)
     if args.dry_run:
         print('PREPARACAO SOMENTE: nenhum hardware sera inicializado.')
         print(shlex.join(command))

@@ -8,7 +8,7 @@ import pytest
 
 from test_telemetry import ROOT, load_walk, make_walk
 from mini_bdx_runtime.imu_safety import (
-    CheckedModeDevice, ImuDataError, LatestImuSample, check_sample, open_i2c,
+    CheckedModeDevice, ImuDataError, ImuSampleStaleError, LatestImuSample, check_sample, open_i2c,
 )
 
 
@@ -153,8 +153,12 @@ def test_sample_aging_during_work_never_writes_or_commits_action_history(stage):
         instance.observation_imu['sample_start_monotonic_ns'] -= 100_000_000
     if stage == 'joints':
         original = instance.hwi.get_present_positions
+        original_imu = instance.imu.get_data
+        stale = []
+        instance.imu.get_data = lambda: stale[0] if stale else original_imu()
         def positions(**kwargs):
             expire()
+            stale.append(instance.observation_imu)
             return original(**kwargs)
         instance.hwi.get_present_positions = positions
     elif stage == 'inference':
@@ -173,7 +177,7 @@ def test_sample_aging_during_work_never_writes_or_commits_action_history(stage):
     assert not writes and instance.imu_fault
     fault = next(e for e in events if e['kind'] == 'imu_fault')
     assert fault['diagnostic']['stage'] == {
-        'joints': 'after_joint_reads', 'inference': 'after_inference_used_sample',
+        'joints': 'select_imu_before_inference', 'inference': 'after_inference_used_sample',
         'before_write': 'before_motor_write'}[stage]
     assert fault['used_sample']['sample_index'] == 4
     assert fault['detected_monotonic_ns'] >= fault['diagnostic']['cycle_start_ns']
@@ -345,3 +349,146 @@ def test_selection_can_wait_after_old_ten_ms_cutoff():
     instance._select_imu_for_inference(np.zeros(101))
     assert instance.observation_imu['sample_index']==2
     assert clock[0]<1_015_300_000
+
+
+@pytest.mark.parametrize('arrival_ms', [2, None, 9])
+def test_real_cache_expired_sample_waits_for_fresh_without_accepting_old(monkeypatch, arrival_ms):
+    from mini_bdx_runtime import imu_safety
+    cls, instance, _, writes = walk()
+    clock = [980_000_000]
+    monkeypatch.setattr(imu_safety, 'time', SimpleNamespace(monotonic_ns=lambda:clock[0]))
+    cache = LatestImuSample(.05)
+    old = dict(gyro=[1.,2.,3.], accelero=[0.,0.,9.81], sample_index=10,
+               sample_start_monotonic_ns=949_000_000, sample_end_monotonic_ns=980_000_000)
+    cache.publish(old)
+    clock[0] = 1_000_000_000  # The real cache now rejects this 51-ms sample.
+    instance.imu.get_data = cache.get
+    instance.observation_imu = old
+    instance.cycle_diagnostics = {'cycle_start_ns':clock[0]-7_000_000}
+    cls.run.__globals__['time'].monotonic_ns = lambda:clock[0]
+    def sleep(seconds):
+        clock[0] += round(seconds*1e9)
+        if arrival_ms is not None and clock[0] >= 1_000_000_000+arrival_ms*1_000_000:
+            cache.publish(dict(old, gyro=[4.,5.,6.], sample_index=11,
+                               sample_start_monotonic_ns=999_000_000, sample_end_monotonic_ns=clock[0]))
+    cls.run.__globals__['time'].sleep = sleep
+    obs = np.zeros(101)
+    if arrival_ms == 2:
+        selected = instance._select_imu_for_inference(obs)
+        np.testing.assert_array_equal(selected[:6], [4.,5.,6.,0.,0.,9.81])
+        assert instance.observation_imu['sample_index']==11 and clock[0]==1_002_000_000
+    else:
+        with pytest.raises(ImuDataError, match='nenhuma amostra fresca'):
+            instance._select_imu_for_inference(obs)
+        assert clock[0]==1_005_000_000
+    assert instance.cycle_diagnostics['selection_stale_polls'] > 0
+    np.testing.assert_array_equal(obs, np.zeros(101))
+    assert not writes and instance.imitation_i == 0
+
+
+@pytest.mark.parametrize('failure', ['producer', 'vector', 'timestamp'])
+def test_selection_does_not_retry_reader_or_corruption_errors_even_when_old(monkeypatch, failure):
+    from mini_bdx_runtime import imu_safety
+    cls, instance, _, _ = walk()
+    clock = [980_000_000]
+    monkeypatch.setattr(imu_safety, 'time', SimpleNamespace(monotonic_ns=lambda:clock[0]))
+    cache = LatestImuSample(.05)
+    old = dict(gyro=[0.,0.,0.], accelero=[0.,0.,9.81], sample_index=10,
+               sample_start_monotonic_ns=949_000_000, sample_end_monotonic_ns=980_000_000)
+    cache.publish(old)
+    clock[0] = 1_000_000_000
+    if failure == 'producer':
+        cache.fail('IMU: amostra antiga (producer error, not cached age)')
+    elif failure == 'vector':
+        cache.sample['gyro'][0] = np.nan
+    else:
+        cache.sample['sample_end_monotonic_ns'] = clock[0]+1
+    instance.imu.get_data = cache.get
+    instance.observation_imu = old
+    instance.cycle_diagnostics = {'cycle_start_ns':clock[0]}
+    cls.run.__globals__['time'].monotonic_ns = lambda:clock[0]
+    cls.run.__globals__['time'].sleep = lambda s:pytest.fail('Real error must not be retried')
+    with pytest.raises(ImuDataError) as caught:
+        instance._select_imu_for_inference(np.zeros(101))
+    assert not isinstance(caught.value, ImuSampleStaleError)
+    assert clock[0] == 1_000_000_000
+
+
+def test_expired_sample_refresh_is_bounded_by_remaining_cycle_time(monkeypatch):
+    cls, instance, _, _ = walk()
+    clock = [1_000_000_000]
+    instance.observation_imu = {'sample_index':1}
+    instance.cycle_diagnostics = {'cycle_start_ns':981_000_000}
+    def expired():
+        raise ImuSampleStaleError(51,50,1)
+    instance.imu.get_data = expired
+    cls.run.__globals__['time'].monotonic_ns = lambda:clock[0]
+    cls.run.__globals__['time'].sleep = lambda s:clock.__setitem__(0,clock[0]+round(s*1e9))
+    with pytest.raises(ImuDataError):
+        instance._select_imu_for_inference(np.zeros(101))
+    assert clock[0] == 1_001_000_000  # Only 1 ms remained in the 20-ms cycle.
+
+
+def test_sample_expiring_during_joints_is_replaced_before_policy_and_telemetry(monkeypatch):
+    from mini_bdx_runtime import imu_safety
+    cls, instance, inputs, writes = walk()
+    clock = [990_000_000]
+    monkeypatch.setattr(imu_safety, 'time', SimpleNamespace(monotonic_ns=lambda:clock[0]))
+    cache = LatestImuSample(.05)
+    old = dict(gyro=[1.,2.,3.], accelero=[0.,0.,9.81], sample_index=10,
+               sample_start_monotonic_ns=955_000_000, sample_end_monotonic_ns=990_000_000)
+    cache.publish(old)
+    clock[0] = 1_000_000_000
+    def read():
+        if writes:
+            raise KeyboardInterrupt
+        return cache.get()
+    instance.imu.get_data = read
+    instance.last_commands = np.zeros(7)
+    positions = instance.hwi.get_present_positions
+    velocities = instance.hwi.get_present_velocities
+    def slow_positions(**kwargs):
+        clock[0] += 4_000_000
+        return positions(**kwargs)
+    def slow_velocities(**kwargs):
+        clock[0] += 2_000_000
+        return velocities(**kwargs)
+    instance.hwi.get_present_positions = slow_positions
+    instance.hwi.get_present_velocities = slow_velocities
+    cls.run.__globals__['time'].monotonic_ns = lambda:clock[0]
+    def sleep(seconds):
+        clock[0] += round(seconds*1e9)
+        if clock[0] >= 1_008_000_000:
+            cache.publish(dict(old, gyro=[4.,5.,6.], sample_index=11,
+                               sample_start_monotonic_ns=1_004_000_000, sample_end_monotonic_ns=clock[0]))
+    cls.run.__globals__['time'].sleep = sleep
+    events = []
+    instance.telemetry = SimpleNamespace(record=lambda kind,**fields:events.append(dict(kind=kind,**fields)))
+    instance.run()
+    assert len(inputs)==len(writes)==1 and instance.imu_fault is None
+    np.testing.assert_array_equal(inputs[0][:6], [4.,5.,6.,0.,0.,9.81])
+    cycle = next(e for e in events if e['kind']=='cycle')
+    assert cycle['sensors']['imu_initial_stale_after_joints'] is True
+    assert cycle['sensors']['imu_selection_stale_polls'] > 0
+    assert cycle['sensors']['imu_sample_index']==11
+    np.testing.assert_array_equal(cycle['policy_obs'][:6],
+        list(cycle['sensors']['gyro_rad_s'])+list(cycle['sensors']['accelerometer_m_s2']))
+
+
+def test_refresh_cannot_accept_newly_published_sample_without_inference_reserve():
+    cls, instance, _, writes = walk()
+    clock = [1_000_000_000]
+    instance.observation_imu = {'sample_index':10}
+    instance.cycle_diagnostics = {'cycle_start_ns':clock[0]}
+    def read():
+        if clock[0] < 1_001_000_000:
+            raise ImuSampleStaleError(51,50,10)
+        return dict(gyro=[0.,0.,0.], accelero=[0.,0.,9.81], sample_index=11,
+                    sample_start_monotonic_ns=959_200_000, sample_end_monotonic_ns=1_001_000_000)
+    instance.imu.get_data = read
+    cls.run.__globals__['time'].monotonic_ns = lambda:clock[0]
+    cls.run.__globals__['time'].sleep = lambda s:clock.__setitem__(0,clock[0]+round(s*1e9))
+    with pytest.raises(ImuDataError, match='sem margem temporal'):
+        instance._select_imu_for_inference(np.zeros(101))
+    assert clock[0] == 1_005_000_000 and instance.observation_imu['sample_index']==11
+    assert not writes and instance.imitation_i == 0

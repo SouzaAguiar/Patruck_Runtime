@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'mini_bdx_runtime'))
 from mini_bdx_runtime.telemetry import TelemetryRecorder
 from mini_bdx_runtime.runtime_budget import RuntimeBudgetError
-from mini_bdx_runtime.imu_safety import ImuDataError, check_sample, LatestImuSample
+from mini_bdx_runtime.imu_safety import ImuDataError, ImuSampleStaleError, check_sample, LatestImuSample
 
 spec = importlib.util.spec_from_file_location('summary', ROOT/'scripts/summarize_telemetry.py')
 summary = importlib.util.module_from_spec(spec)
@@ -95,10 +95,10 @@ def load_walk(source):
     # neither RLWalk.__init__ nor HWI.turn_on can run in these tests.
     tree = ast.parse(source)
     node = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == 'RLWalk')
-    namespace = {'np': np, 'HOME_DIR': '', 'time': SimpleNamespace(
+    namespace = {'np': np, 'HOME_DIR': '', 'IMU_SELECTION_VERSION': 3, 'time': SimpleNamespace(
         time=time.time, monotonic_ns=time.monotonic_ns, sleep=lambda seconds: None),
         'make_action_dict': lambda targets, names: dict(zip(names, targets)),
-        'ImuDataError': ImuDataError, 'check_sample': check_sample,
+        'ImuDataError': ImuDataError, 'ImuSampleStaleError': ImuSampleStaleError, 'check_sample': check_sample,
         'RuntimeBudgetError': RuntimeBudgetError}
     exec(compile(ast.Module(body=[node], type_ignores=[]), '<walk-class-only>', 'exec'), namespace)
     return namespace['RLWalk']

@@ -9,7 +9,7 @@ from mini_bdx_runtime.onnx_infer import OnnxInfer
 
 from mini_bdx_runtime.raw_imu import Imu
 from mini_bdx_runtime.imu_frame import IMU_FRAMES
-from mini_bdx_runtime.imu_safety import ImuDataError, check_sample
+from mini_bdx_runtime.imu_safety import ImuDataError, ImuSampleStaleError, check_sample
 from mini_bdx_runtime.runtime_budget import RuntimeBudget, RuntimeBudgetError
 from mini_bdx_runtime.runtime_trace import runtime_trace_session
 from mini_bdx_runtime.poly_reference_motion import PolyReferenceMotion
@@ -25,6 +25,7 @@ from mini_bdx_runtime.telemetry import TelemetryRecorder, file_sha256
 import os
 
 HOME_DIR = os.path.expanduser("~")
+IMU_SELECTION_VERSION = 3
 
 
 class RLWalk:
@@ -195,6 +196,7 @@ class RLWalk:
                 stationary_test=stationary_test,
                 test_duration_s=test_duration_s,
                 runtime_timing_trace=timing_trace is not None,
+                imu_selection_version=IMU_SELECTION_VERSION,
                 phase_period_steps=self.PRM.nb_steps_in_period,
                 phase_frequency_offset=self.phase_frequency_factor_offset,
                 cutoff_frequency_hz=cutoff_frequency, replay_obs=replay_obs is not None,
@@ -255,7 +257,13 @@ class RLWalk:
         feet_contacts = self.feet_contacts.get()
         contacts_end_ns = time.monotonic_ns()
         self._mark_imu_stage('after_joint_reads', contacts_end_ns=contacts_end_ns)
-        check_sample(imu_data, self.imu_max_age_s)  # Joint reads may have blocked.
+        # This snapshot is only used to assemble the observation. Selection must
+        # replace/validate its IMU fields before any inference or motor write.
+        try:
+            check_sample(imu_data, self.imu_max_age_s)
+            self.cycle_diagnostics['initial_sample_stale_after_joints'] = False
+        except ImuSampleStaleError:
+            self.cycle_diagnostics['initial_sample_stale_after_joints'] = True
 
         if self.telemetry is not None:
             sample_end = imu_data.get('sample_end_monotonic_ns')
@@ -308,6 +316,7 @@ class RLWalk:
         deadline_ns = min(started_ns + 5_000_000, cycle_deadline_ns)
         initial_index = self.observation_imu.get('sample_index')
         polls = 0
+        stale_polls = 0
         self._mark_imu_stage('select_imu_before_inference',
                              selection_initial_sample_index=initial_index,
                              selection_start_ns=started_ns,
@@ -315,23 +324,37 @@ class RLWalk:
                              selection_cycle_deadline_ns=cycle_deadline_ns,
                              selection_reserve_ns=reserve_ns)
         while True:
-            data = self.imu.get_data()  # Cached snapshot; propagate reader errors.
-            self.observation_imu = data
-            now_ns = time.monotonic_ns()
-            check_sample(data, self.imu_max_age_s, now_ns=now_ns)
-            age_ns = now_ns - data['sample_start_monotonic_ns']
             polls += 1
+            try:
+                data = self.imu.get_data()  # Real reader errors still propagate immediately.
+                self.observation_imu = data
+                now_ns = time.monotonic_ns()
+                check_sample(data, self.imu_max_age_s, now_ns=now_ns)
+                age_ns = now_ns - data['sample_start_monotonic_ns']
+                sample_index = data.get('sample_index')
+                valid = True
+            except ImuSampleStaleError as exc:
+                # Retry age only. Never reinterpret a bus/producer/corruption error
+                # as staleness or use rejected vectors to build an action.
+                now_ns = time.monotonic_ns()
+                age_ns = int(exc.age_ms * 1e6)
+                sample_index = exc.sample_index
+                stale_polls += 1
+                valid = False
             self.cycle_diagnostics.update(selection_polls=polls,
                 selection_end_ns=now_ns, selection_age_ms=age_ns / 1e6,
-                selection_sample_index=data.get('sample_index'))
+                selection_sample_index=sample_index, selection_stale_polls=stale_polls)
             if now_ns > cycle_deadline_ns:
                 raise ImuDataError('IMU: prazo do ciclo na selecao excedido')
-            if age_ns <= int(self.imu_max_age_s * 1e9) - reserve_ns:
+            if valid and age_ns <= int(self.imu_max_age_s * 1e9) - reserve_ns:
                 # The wait deadline stops polling, not acceptance of a fresh
                 # sample returned by the final poll. Still require the cycle
                 # deadline, age reserve, runtime budget and final write checks.
                 break
             if now_ns >= deadline_ns:
+                if not valid:
+                    raise ImuDataError('IMU: nenhuma amostra fresca na selecao '
+                                       f'({age_ns / 1e6:.1f} ms; limite {self.imu_max_age_s*1000:.1f} ms)')
                 raise ImuDataError('IMU: sem margem temporal antes da inferencia '
                                    f'({age_ns / 1e6:.1f} ms; reserva {reserve_ns / 1e6:.1f} ms)')
             time.sleep(min(0.0005, (deadline_ns - now_ns) / 1e9))
@@ -347,6 +370,8 @@ class RLWalk:
                 imu_selected_monotonic_ns=now_ns,
                 imu_selection_wait_ms=(now_ns - started_ns) / 1e6,
                 imu_selection_polls=polls,
+                imu_selection_stale_polls=stale_polls,
+                imu_initial_stale_after_joints=self.cycle_diagnostics.get('initial_sample_stale_after_joints', False),
                 imu_selection_wait_deadline_overrun_ms=max(0, (now_ns-deadline_ns)/1e6),
                 imu_selection_cycle_remaining_ms=(cycle_deadline_ns-now_ns)/1e6,
                 imu_reserve_ms=reserve_ns / 1e6,
@@ -876,7 +901,7 @@ if __name__ == "__main__":
             'runtime_trace_seconds': args.runtime_trace_seconds,
             'stationary_test': args.stationary_test,
             'test_duration_s': args.test_duration_s,
-            'imu_selection_version': 2,
+            'imu_selection_version': IMU_SELECTION_VERSION,
             'imu_selection_max_wait_ms': 5,
             'imu_selection_reserve_ms': min(10, args.imu_max_age_ms / 2),
             'max_rss_growth_mb': args.max_rss_growth_mb, 'min_available_mb': args.min_available_mb,
