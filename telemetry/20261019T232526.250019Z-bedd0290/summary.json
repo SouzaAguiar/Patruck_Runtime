@@ -1,0 +1,878 @@
+{
+  "version": 1,
+  "state": "failed",
+  "failures": [
+    "ImuSampleStaleError: IMU: amostra antiga (52.4 ms; limite 50.0 ms)"
+  ],
+  "total_samples": 110,
+  "valid_samples": 102,
+  "rejected_samples": 8,
+  "elapsed_s": 2.194685675,
+  "effective_frequency_hz": 50.12107257682811,
+  "valid_frequency_hz": 46.475903662149705,
+  "nominal_coverage": 0.204,
+  "principal_angles_from_mean_acceleration": {
+    "pitch_deg": 5.712227879332118,
+    "roll_deg": 0.29640546125997463,
+    "tilt_deg": 5.719964023320671
+  },
+  "angles_deg": {
+    "pitch_deg": {
+      "count": 102,
+      "mean": 5.712338015269084,
+      "std": 0.04637250622783081,
+      "min": 5.600371446444329,
+      "max": 5.8334304627555955
+    },
+    "roll_deg": {
+      "count": 102,
+      "mean": 0.29643537513195467,
+      "std": 0.05928686731216522,
+      "min": 0.17436559760712084,
+      "max": 0.4126366653794107
+    },
+    "tilt_deg": {
+      "count": 102,
+      "mean": 5.720386831067821,
+      "std": 0.04612466856021531,
+      "min": 5.608018584973901,
+      "max": 5.84089141227654
+    }
+  },
+  "acceleration_native_m_s2": {
+    "x": {
+      "count": 102,
+      "mean": -0.05068627450980392,
+      "std": 0.010122756727679552,
+      "min": -0.07,
+      "max": -0.03
+    },
+    "y": {
+      "count": 102,
+      "mean": 0.9751960784313726,
+      "std": 0.006527527255575419,
+      "min": 0.96,
+      "max": 0.99
+    },
+    "z": {
+      "count": 102,
+      "mean": 9.749019607843136,
+      "std": 0.04278330726157542,
+      "min": 9.65,
+      "max": 9.84
+    }
+  },
+  "acceleration_yaw_minus_90_m_s2": {
+    "x": {
+      "count": 102,
+      "mean": 0.9751960784313726,
+      "std": 0.006527527255575419,
+      "min": 0.96,
+      "max": 0.99
+    },
+    "y": {
+      "count": 102,
+      "mean": 0.05068627450980392,
+      "std": 0.010122756727679552,
+      "min": 0.03,
+      "max": 0.07
+    },
+    "z": {
+      "count": 102,
+      "mean": 9.749019607843136,
+      "std": 0.04278330726157542,
+      "min": 9.65,
+      "max": 9.84
+    }
+  },
+  "gyro_native_rad_s": {
+    "x": {
+      "count": 102,
+      "mean": 0.00016041629154359645,
+      "std": 0.0018794510367686923,
+      "min": -0.003272492347489368,
+      "max": 0.00545415391248228
+    },
+    "y": {
+      "count": 102,
+      "mean": -3.2083258308719294e-05,
+      "std": 0.0013001968863303787,
+      "min": -0.003272492347489368,
+      "max": 0.003272492347489368
+    },
+    "z": {
+      "count": 102,
+      "mean": -0.00018180513041607602,
+      "std": 0.0014089466374056592,
+      "min": -0.003272492347489368,
+      "max": 0.004363323129985824
+    }
+  },
+  "gyro_selected_rad_s": {
+    "x": {
+      "count": 102,
+      "mean": -3.2083258308719294e-05,
+      "std": 0.0013001968863303787,
+      "min": -0.003272492347489368,
+      "max": 0.003272492347489368
+    },
+    "y": {
+      "count": 102,
+      "mean": -0.00016041629154359645,
+      "std": 0.0018794510367686923,
+      "min": -0.00545415391248228,
+      "max": 0.003272492347489368
+    },
+    "z": {
+      "count": 102,
+      "mean": -0.00018180513041607602,
+      "std": 0.0014089466374056592,
+      "min": -0.003272492347489368,
+      "max": 0.004363323129985824
+    }
+  },
+  "motors": [
+    {
+      "name": "left_hip_yaw",
+      "id": 20,
+      "logical_position_rad": {
+        "count": 110,
+        "mean": 0.006,
+        "std": 0.0,
+        "min": 0.006,
+        "max": 0.006
+      },
+      "home_rad": 0.002,
+      "configured_offset_rad": -0.05,
+      "raw_estimated_position_rad": {
+        "count": 110,
+        "mean": -0.044000000000000004,
+        "std": 0.0,
+        "min": -0.044000000000000004,
+        "max": -0.044000000000000004
+      },
+      "measured_minus_home_rad": {
+        "count": 110,
+        "mean": 0.004,
+        "std": 0.0,
+        "min": 0.004,
+        "max": 0.004
+      },
+      "max_abs_velocity_rad_s": 0.0,
+      "position_span_rad": 0.0
+    },
+    {
+      "name": "left_hip_roll",
+      "id": 21,
+      "logical_position_rad": {
+        "count": 110,
+        "mean": 0.05,
+        "std": 0.0,
+        "min": 0.05,
+        "max": 0.05
+      },
+      "home_rad": 0.053,
+      "configured_offset_rad": -0.05,
+      "raw_estimated_position_rad": {
+        "count": 110,
+        "mean": 0.0,
+        "std": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "measured_minus_home_rad": {
+        "count": 110,
+        "mean": -0.0029999999999999957,
+        "std": 0.0,
+        "min": -0.0029999999999999957,
+        "max": -0.0029999999999999957
+      },
+      "max_abs_velocity_rad_s": 0.0,
+      "position_span_rad": 0.0
+    },
+    {
+      "name": "left_hip_pitch",
+      "id": 22,
+      "logical_position_rad": {
+        "count": 110,
+        "mean": -0.6349999999999999,
+        "std": 0.0,
+        "min": -0.635,
+        "max": -0.635
+      },
+      "home_rad": -0.63,
+      "configured_offset_rad": -0.14,
+      "raw_estimated_position_rad": {
+        "count": 110,
+        "mean": -0.775,
+        "std": 0.0,
+        "min": -0.775,
+        "max": -0.775
+      },
+      "measured_minus_home_rad": {
+        "count": 110,
+        "mean": -0.0050000000000000044,
+        "std": 0.0,
+        "min": -0.0050000000000000044,
+        "max": -0.0050000000000000044
+      },
+      "max_abs_velocity_rad_s": 0.0,
+      "position_span_rad": 0.0
+    },
+    {
+      "name": "left_knee",
+      "id": 23,
+      "logical_position_rad": {
+        "count": 110,
+        "mean": 1.376,
+        "std": 0.0,
+        "min": 1.376,
+        "max": 1.376
+      },
+      "home_rad": 1.368,
+      "configured_offset_rad": 0.0,
+      "raw_estimated_position_rad": {
+        "count": 110,
+        "mean": 1.376,
+        "std": 0.0,
+        "min": 1.376,
+        "max": 1.376
+      },
+      "measured_minus_home_rad": {
+        "count": 110,
+        "mean": 0.007999999999999785,
+        "std": 0.0,
+        "min": 0.007999999999999785,
+        "max": 0.007999999999999785
+      },
+      "max_abs_velocity_rad_s": 0.0,
+      "position_span_rad": 0.0
+    },
+    {
+      "name": "left_ankle",
+      "id": 24,
+      "logical_position_rad": {
+        "count": 110,
+        "mean": -0.794,
+        "std": 0.0,
+        "min": -0.794,
+        "max": -0.794
+      },
+      "home_rad": -0.784,
+      "configured_offset_rad": 0.075,
+      "raw_estimated_position_rad": {
+        "count": 110,
+        "mean": -0.7190000000000001,
+        "std": 0.0,
+        "min": -0.7190000000000001,
+        "max": -0.7190000000000001
+      },
+      "measured_minus_home_rad": {
+        "count": 110,
+        "mean": -0.010000000000000009,
+        "std": 0.0,
+        "min": -0.010000000000000009,
+        "max": -0.010000000000000009
+      },
+      "max_abs_velocity_rad_s": 0.0,
+      "position_span_rad": 0.0
+    },
+    {
+      "name": "neck_pitch",
+      "id": 30,
+      "logical_position_rad": {
+        "count": 110,
+        "mean": 0.007,
+        "std": 0.0,
+        "min": 0.007,
+        "max": 0.007
+      },
+      "home_rad": 0.0,
+      "configured_offset_rad": 0.7,
+      "raw_estimated_position_rad": {
+        "count": 110,
+        "mean": 0.707,
+        "std": 0.0,
+        "min": 0.707,
+        "max": 0.707
+      },
+      "measured_minus_home_rad": {
+        "count": 110,
+        "mean": 0.007,
+        "std": 0.0,
+        "min": 0.007,
+        "max": 0.007
+      },
+      "max_abs_velocity_rad_s": 0.0,
+      "position_span_rad": 0.0
+    },
+    {
+      "name": "head_pitch",
+      "id": 31,
+      "logical_position_rad": {
+        "count": 110,
+        "mean": -0.003,
+        "std": 0.0,
+        "min": -0.003,
+        "max": -0.003
+      },
+      "home_rad": 0.0,
+      "configured_offset_rad": -0.6,
+      "raw_estimated_position_rad": {
+        "count": 110,
+        "mean": -0.603,
+        "std": 0.0,
+        "min": -0.603,
+        "max": -0.603
+      },
+      "measured_minus_home_rad": {
+        "count": 110,
+        "mean": -0.003,
+        "std": 0.0,
+        "min": -0.003,
+        "max": -0.003
+      },
+      "max_abs_velocity_rad_s": 0.0,
+      "position_span_rad": 0.0
+    },
+    {
+      "name": "head_yaw",
+      "id": 32,
+      "logical_position_rad": {
+        "count": 110,
+        "mean": -0.004,
+        "std": 0.0,
+        "min": -0.004,
+        "max": -0.004
+      },
+      "home_rad": 0,
+      "configured_offset_rad": -0.05,
+      "raw_estimated_position_rad": {
+        "count": 110,
+        "mean": -0.054000000000000006,
+        "std": 0.0,
+        "min": -0.054000000000000006,
+        "max": -0.054000000000000006
+      },
+      "measured_minus_home_rad": {
+        "count": 110,
+        "mean": -0.004,
+        "std": 0.0,
+        "min": -0.004,
+        "max": -0.004
+      },
+      "max_abs_velocity_rad_s": 0.0,
+      "position_span_rad": 0.0
+    },
+    {
+      "name": "head_roll",
+      "id": 33,
+      "logical_position_rad": {
+        "count": 110,
+        "mean": -0.002,
+        "std": 0.0,
+        "min": -0.002,
+        "max": -0.002
+      },
+      "home_rad": 0,
+      "configured_offset_rad": 0.05,
+      "raw_estimated_position_rad": {
+        "count": 110,
+        "mean": 0.048,
+        "std": 0.0,
+        "min": 0.048,
+        "max": 0.048
+      },
+      "measured_minus_home_rad": {
+        "count": 110,
+        "mean": -0.002,
+        "std": 0.0,
+        "min": -0.002,
+        "max": -0.002
+      },
+      "max_abs_velocity_rad_s": 0.0,
+      "position_span_rad": 0.0
+    },
+    {
+      "name": "right_hip_yaw",
+      "id": 10,
+      "logical_position_rad": {
+        "count": 110,
+        "mean": -0.006,
+        "std": 0.0,
+        "min": -0.006,
+        "max": -0.006
+      },
+      "home_rad": -0.003,
+      "configured_offset_rad": 0.0,
+      "raw_estimated_position_rad": {
+        "count": 110,
+        "mean": -0.006,
+        "std": 0.0,
+        "min": -0.006,
+        "max": -0.006
+      },
+      "measured_minus_home_rad": {
+        "count": 110,
+        "mean": -0.003,
+        "std": 0.0,
+        "min": -0.003,
+        "max": -0.003
+      },
+      "max_abs_velocity_rad_s": 0.0,
+      "position_span_rad": 0.0
+    },
+    {
+      "name": "right_hip_roll",
+      "id": 11,
+      "logical_position_rad": {
+        "count": 110,
+        "mean": -0.057999999999999996,
+        "std": 0.0,
+        "min": -0.058,
+        "max": -0.058
+      },
+      "home_rad": -0.065,
+      "configured_offset_rad": 0.17,
+      "raw_estimated_position_rad": {
+        "count": 110,
+        "mean": 0.11200000000000002,
+        "std": 0.0,
+        "min": 0.11200000000000002,
+        "max": 0.11200000000000002
+      },
+      "measured_minus_home_rad": {
+        "count": 110,
+        "mean": 0.006999999999999999,
+        "std": 0.0,
+        "min": 0.006999999999999999,
+        "max": 0.006999999999999999
+      },
+      "max_abs_velocity_rad_s": 0.0,
+      "position_span_rad": 0.0
+    },
+    {
+      "name": "right_hip_pitch",
+      "id": 12,
+      "logical_position_rad": {
+        "count": 110,
+        "mean": 0.641,
+        "std": 0.0,
+        "min": 0.641,
+        "max": 0.641
+      },
+      "home_rad": 0.635,
+      "configured_offset_rad": 0.14,
+      "raw_estimated_position_rad": {
+        "count": 110,
+        "mean": 0.7809999999999999,
+        "std": 0.0,
+        "min": 0.781,
+        "max": 0.781
+      },
+      "measured_minus_home_rad": {
+        "count": 110,
+        "mean": 0.006000000000000005,
+        "std": 0.0,
+        "min": 0.006000000000000005,
+        "max": 0.006000000000000005
+      },
+      "max_abs_velocity_rad_s": 0.0,
+      "position_span_rad": 0.0
+    },
+    {
+      "name": "right_knee",
+      "id": 13,
+      "logical_position_rad": {
+        "count": 110,
+        "mean": 1.39,
+        "std": 0.0,
+        "min": 1.39,
+        "max": 1.39
+      },
+      "home_rad": 1.379,
+      "configured_offset_rad": 0.0,
+      "raw_estimated_position_rad": {
+        "count": 110,
+        "mean": 1.39,
+        "std": 0.0,
+        "min": 1.39,
+        "max": 1.39
+      },
+      "measured_minus_home_rad": {
+        "count": 110,
+        "mean": 0.010999999999999899,
+        "std": 0.0,
+        "min": 0.010999999999999899,
+        "max": 0.010999999999999899
+      },
+      "max_abs_velocity_rad_s": 0.0,
+      "position_span_rad": 0.0
+    },
+    {
+      "name": "right_ankle",
+      "id": 14,
+      "logical_position_rad": {
+        "count": 110,
+        "mean": -0.8019999999999999,
+        "std": 0.0,
+        "min": -0.802,
+        "max": -0.802
+      },
+      "home_rad": -0.796,
+      "configured_offset_rad": 0.05,
+      "raw_estimated_position_rad": {
+        "count": 110,
+        "mean": -0.752,
+        "std": 0.0,
+        "min": -0.752,
+        "max": -0.752
+      },
+      "measured_minus_home_rad": {
+        "count": 110,
+        "mean": -0.006000000000000005,
+        "std": 0.0,
+        "min": -0.006000000000000005,
+        "max": -0.006000000000000005
+      },
+      "max_abs_velocity_rad_s": 0.0,
+      "position_span_rad": 0.0
+    }
+  ],
+  "leg_groups": {
+    "left": {
+      "hip_yaw": {
+        "name": "left_hip_yaw",
+        "id": 20,
+        "logical_position_rad": {
+          "count": 110,
+          "mean": 0.006,
+          "std": 0.0,
+          "min": 0.006,
+          "max": 0.006
+        },
+        "home_rad": 0.002,
+        "configured_offset_rad": -0.05,
+        "raw_estimated_position_rad": {
+          "count": 110,
+          "mean": -0.044000000000000004,
+          "std": 0.0,
+          "min": -0.044000000000000004,
+          "max": -0.044000000000000004
+        },
+        "measured_minus_home_rad": {
+          "count": 110,
+          "mean": 0.004,
+          "std": 0.0,
+          "min": 0.004,
+          "max": 0.004
+        },
+        "max_abs_velocity_rad_s": 0.0,
+        "position_span_rad": 0.0
+      },
+      "hip_roll": {
+        "name": "left_hip_roll",
+        "id": 21,
+        "logical_position_rad": {
+          "count": 110,
+          "mean": 0.05,
+          "std": 0.0,
+          "min": 0.05,
+          "max": 0.05
+        },
+        "home_rad": 0.053,
+        "configured_offset_rad": -0.05,
+        "raw_estimated_position_rad": {
+          "count": 110,
+          "mean": 0.0,
+          "std": 0.0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "measured_minus_home_rad": {
+          "count": 110,
+          "mean": -0.0029999999999999957,
+          "std": 0.0,
+          "min": -0.0029999999999999957,
+          "max": -0.0029999999999999957
+        },
+        "max_abs_velocity_rad_s": 0.0,
+        "position_span_rad": 0.0
+      },
+      "hip_pitch": {
+        "name": "left_hip_pitch",
+        "id": 22,
+        "logical_position_rad": {
+          "count": 110,
+          "mean": -0.6349999999999999,
+          "std": 0.0,
+          "min": -0.635,
+          "max": -0.635
+        },
+        "home_rad": -0.63,
+        "configured_offset_rad": -0.14,
+        "raw_estimated_position_rad": {
+          "count": 110,
+          "mean": -0.775,
+          "std": 0.0,
+          "min": -0.775,
+          "max": -0.775
+        },
+        "measured_minus_home_rad": {
+          "count": 110,
+          "mean": -0.0050000000000000044,
+          "std": 0.0,
+          "min": -0.0050000000000000044,
+          "max": -0.0050000000000000044
+        },
+        "max_abs_velocity_rad_s": 0.0,
+        "position_span_rad": 0.0
+      },
+      "knee": {
+        "name": "left_knee",
+        "id": 23,
+        "logical_position_rad": {
+          "count": 110,
+          "mean": 1.376,
+          "std": 0.0,
+          "min": 1.376,
+          "max": 1.376
+        },
+        "home_rad": 1.368,
+        "configured_offset_rad": 0.0,
+        "raw_estimated_position_rad": {
+          "count": 110,
+          "mean": 1.376,
+          "std": 0.0,
+          "min": 1.376,
+          "max": 1.376
+        },
+        "measured_minus_home_rad": {
+          "count": 110,
+          "mean": 0.007999999999999785,
+          "std": 0.0,
+          "min": 0.007999999999999785,
+          "max": 0.007999999999999785
+        },
+        "max_abs_velocity_rad_s": 0.0,
+        "position_span_rad": 0.0
+      },
+      "ankle": {
+        "name": "left_ankle",
+        "id": 24,
+        "logical_position_rad": {
+          "count": 110,
+          "mean": -0.794,
+          "std": 0.0,
+          "min": -0.794,
+          "max": -0.794
+        },
+        "home_rad": -0.784,
+        "configured_offset_rad": 0.075,
+        "raw_estimated_position_rad": {
+          "count": 110,
+          "mean": -0.7190000000000001,
+          "std": 0.0,
+          "min": -0.7190000000000001,
+          "max": -0.7190000000000001
+        },
+        "measured_minus_home_rad": {
+          "count": 110,
+          "mean": -0.010000000000000009,
+          "std": 0.0,
+          "min": -0.010000000000000009,
+          "max": -0.010000000000000009
+        },
+        "max_abs_velocity_rad_s": 0.0,
+        "position_span_rad": 0.0
+      }
+    },
+    "right": {
+      "hip_yaw": {
+        "name": "right_hip_yaw",
+        "id": 10,
+        "logical_position_rad": {
+          "count": 110,
+          "mean": -0.006,
+          "std": 0.0,
+          "min": -0.006,
+          "max": -0.006
+        },
+        "home_rad": -0.003,
+        "configured_offset_rad": 0.0,
+        "raw_estimated_position_rad": {
+          "count": 110,
+          "mean": -0.006,
+          "std": 0.0,
+          "min": -0.006,
+          "max": -0.006
+        },
+        "measured_minus_home_rad": {
+          "count": 110,
+          "mean": -0.003,
+          "std": 0.0,
+          "min": -0.003,
+          "max": -0.003
+        },
+        "max_abs_velocity_rad_s": 0.0,
+        "position_span_rad": 0.0
+      },
+      "hip_roll": {
+        "name": "right_hip_roll",
+        "id": 11,
+        "logical_position_rad": {
+          "count": 110,
+          "mean": -0.057999999999999996,
+          "std": 0.0,
+          "min": -0.058,
+          "max": -0.058
+        },
+        "home_rad": -0.065,
+        "configured_offset_rad": 0.17,
+        "raw_estimated_position_rad": {
+          "count": 110,
+          "mean": 0.11200000000000002,
+          "std": 0.0,
+          "min": 0.11200000000000002,
+          "max": 0.11200000000000002
+        },
+        "measured_minus_home_rad": {
+          "count": 110,
+          "mean": 0.006999999999999999,
+          "std": 0.0,
+          "min": 0.006999999999999999,
+          "max": 0.006999999999999999
+        },
+        "max_abs_velocity_rad_s": 0.0,
+        "position_span_rad": 0.0
+      },
+      "hip_pitch": {
+        "name": "right_hip_pitch",
+        "id": 12,
+        "logical_position_rad": {
+          "count": 110,
+          "mean": 0.641,
+          "std": 0.0,
+          "min": 0.641,
+          "max": 0.641
+        },
+        "home_rad": 0.635,
+        "configured_offset_rad": 0.14,
+        "raw_estimated_position_rad": {
+          "count": 110,
+          "mean": 0.7809999999999999,
+          "std": 0.0,
+          "min": 0.781,
+          "max": 0.781
+        },
+        "measured_minus_home_rad": {
+          "count": 110,
+          "mean": 0.006000000000000005,
+          "std": 0.0,
+          "min": 0.006000000000000005,
+          "max": 0.006000000000000005
+        },
+        "max_abs_velocity_rad_s": 0.0,
+        "position_span_rad": 0.0
+      },
+      "knee": {
+        "name": "right_knee",
+        "id": 13,
+        "logical_position_rad": {
+          "count": 110,
+          "mean": 1.39,
+          "std": 0.0,
+          "min": 1.39,
+          "max": 1.39
+        },
+        "home_rad": 1.379,
+        "configured_offset_rad": 0.0,
+        "raw_estimated_position_rad": {
+          "count": 110,
+          "mean": 1.39,
+          "std": 0.0,
+          "min": 1.39,
+          "max": 1.39
+        },
+        "measured_minus_home_rad": {
+          "count": 110,
+          "mean": 0.010999999999999899,
+          "std": 0.0,
+          "min": 0.010999999999999899,
+          "max": 0.010999999999999899
+        },
+        "max_abs_velocity_rad_s": 0.0,
+        "position_span_rad": 0.0
+      },
+      "ankle": {
+        "name": "right_ankle",
+        "id": 14,
+        "logical_position_rad": {
+          "count": 110,
+          "mean": -0.8019999999999999,
+          "std": 0.0,
+          "min": -0.802,
+          "max": -0.802
+        },
+        "home_rad": -0.796,
+        "configured_offset_rad": 0.05,
+        "raw_estimated_position_rad": {
+          "count": 110,
+          "mean": -0.752,
+          "std": 0.0,
+          "min": -0.752,
+          "max": -0.752
+        },
+        "measured_minus_home_rad": {
+          "count": 110,
+          "mean": -0.006000000000000005,
+          "std": 0.0,
+          "min": -0.006000000000000005,
+          "max": -0.006000000000000005
+        },
+        "max_abs_velocity_rad_s": 0.0,
+        "position_span_rad": 0.0
+      }
+    }
+  },
+  "contacts": {
+    "left": {
+      "readings": 110,
+      "contact": 110,
+      "no_contact": 0
+    },
+    "right": {
+      "readings": 110,
+      "contact": 110,
+      "no_contact": 0
+    }
+  },
+  "posture_stable": true,
+  "significant_joint_motion": false,
+  "settle_velocity_rad_s": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "validity_passed": false,
+  "reference_20261019_deg": {
+    "pitch": 0.447,
+    "roll": 0.106,
+    "applied_as_correction": false
+  },
+  "difference_from_reference_deg": {
+    "pitch_deg": 5.265227879332118,
+    "roll_deg": 0.19040546125997465
+  }
+}
