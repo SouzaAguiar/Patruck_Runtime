@@ -1,0 +1,2 @@
+{"state":"cancelled","failures":[],"elapsed_s":0,"kind":"static_pose_end","sequence":1,"recorded_monotonic_ns":125440479253,"recorded_unix_ns":1792451212705793217}
+{"reason":"cancelled","kind":"session_end","sequence":2,"recorded_monotonic_ns":125440666547,"recorded_unix_ns":1792451212705977334}

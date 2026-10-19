@@ -1,0 +1,24 @@
+{
+  "clock": "monotonic_ns",
+  "capacity": 4096,
+  "total_batches": 2,
+  "omitted_batches": 0,
+  "batches": [
+    {
+      "chunk": 0,
+      "records": 1,
+      "start_monotonic_ns": 125439208926,
+      "serialize_write_end_monotonic_ns": 125441252544,
+      "fsync_end_monotonic_ns": 125447992156,
+      "end_monotonic_ns": 125455426255
+    },
+    {
+      "chunk": 1,
+      "records": 2,
+      "start_monotonic_ns": 125455663185,
+      "serialize_write_end_monotonic_ns": 125456624551,
+      "fsync_end_monotonic_ns": 125462213524,
+      "end_monotonic_ns": 125469141315
+    }
+  ]
+}

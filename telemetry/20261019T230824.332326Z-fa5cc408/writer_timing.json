@@ -1,0 +1,40 @@
+{
+  "clock": "monotonic_ns",
+  "capacity": 4096,
+  "total_batches": 4,
+  "omitted_batches": 0,
+  "batches": [
+    {
+      "chunk": 0,
+      "records": 1,
+      "start_monotonic_ns": 226237872161,
+      "serialize_write_end_monotonic_ns": 226238911587,
+      "fsync_end_monotonic_ns": 226246110070,
+      "end_monotonic_ns": 226255277092
+    },
+    {
+      "chunk": 1,
+      "records": 1,
+      "start_monotonic_ns": 231257987678,
+      "serialize_write_end_monotonic_ns": 231265904754,
+      "fsync_end_monotonic_ns": 231273291883,
+      "end_monotonic_ns": 231289690514
+    },
+    {
+      "chunk": 2,
+      "records": 53,
+      "start_monotonic_ns": 232289945803,
+      "serialize_write_end_monotonic_ns": 232376616349,
+      "fsync_end_monotonic_ns": 232389213942,
+      "end_monotonic_ns": 232395089406
+    },
+    {
+      "chunk": 3,
+      "records": 7,
+      "start_monotonic_ns": 232396742269,
+      "serialize_write_end_monotonic_ns": 232399788672,
+      "fsync_end_monotonic_ns": 232404726063,
+      "end_monotonic_ns": 232410399079
+    }
+  ]
+}
